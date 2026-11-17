@@ -238,11 +238,23 @@ function unb64u(s){
   const bin = typeof atob === 'function' ? atob(s) : Buffer.from(s, 'base64').toString('binary');
   return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
 }
-// QR 內容只放證書上本來就印的資料，不放身分證字號
-function qrPayload(f){ return b64u(JSON.stringify({v:1, u:cut(f.unit, 40), t:cut(f.title, 12), no:cut(f.no, 40), n:cut(f.name, 20), c:cut(f.course, 60), s:f.start || '', e:f.end || '', h:String(f.hours || ''), d:f.date || '', k:f.code || '', tel:cut(f.tel, 30)})); }
+// QR 內容只放證書上本來就印的資料，不放身分證字號。
+// v2（2026-11-17）：精簡格式「2␟單位␟證書名稱␟字號␟姓名␟課程␟時數␟發證日yyyymmdd␟驗證碼(不含-)␟電話」，不放訓練起訖日。
+// v1 是 JSON（含起訖日），QR 太密（version 13、20mm 每格 0.26mm），手機掃紙本不穩，改 v2＋QR 放大到 25mm；舊證書的 v1 仍讀得懂。
+const US = '';
+function qrPayload(f){
+  const d = parseDate(f.date).replace(/-/g, ''), k = String(f.code || '').replace(/-/g, '');
+  return b64u(['2', cut(f.unit, 40), cut(f.title, 12), cut(f.no, 40), cut(f.name, 20), cut(f.course, 60), cut(f.hours, 8), d, k, cut(f.tel, 30)].map((x) => String(x).replace(//g, ' ')).join(US));
+}
 function readPayload(s){
   try{
-    const o = JSON.parse(unb64u(s)); if(!o || o.v !== 1) return null;
+    const t = unb64u(s);
+    if(t.slice(0, 2) === '2' + US){
+      const a = t.split(US); if(a.length < 9) return null;
+      const k = cut(a[8], 8).toUpperCase();
+      return {unit:cut(a[1], 40), title:cut(a[2], 12), no:cut(a[3], 40), name:cut(a[4], 20), course:cut(a[5], 60), start:'', end:'', hours:cut(a[6], 8), date:parseDate(a[7]), code:k.length === 8 ? k.slice(0, 4) + '-' + k.slice(4) : k, tel:cut(a[9] || '', 30)};
+    }
+    const o = JSON.parse(t); if(!o || o.v !== 1) return null;
     return {unit:cut(o.u, 40), title:cut(o.t, 12), no:cut(o.no, 40), name:cut(o.n, 20), course:cut(o.c, 60), start:parseDate(o.s), end:parseDate(o.e), hours:cut(o.h, 8), date:parseDate(o.d), code:cut(o.k, 9), tel:cut(o.tel, 30)};
   }catch(e){ return null; }
 }

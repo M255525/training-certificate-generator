@@ -23,20 +23,23 @@
 - `serialNo` 樣板 `{年}{號}{期}`。只有要發證的人分配字號，依名單順序。
 - `verifyCode(secret, f)`：HMAC-SHA256(密語, 字號|姓名|課程|發證日|時數) → Crockford base32 8 碼 `XXXX-XXXX`（async，crypto.subtle）。`qrPayload` base64url JSON，**不放身分證字號**。
 - 範例 3 組全虛構；範例一的黃志明身分證**刻意**檢查碼錯，示範提醒；張大同出席不足、李曉華成績不足。
-- **改 data.js／art.js 後跑 `node tools/test_engine.mjs`**（71 項）。
+- **改 data.js／art.js 後跑 `node tools/test_engine.mjs`**（74 項）。
 
 ## 畫面（app.js）
 - 狀態 `tcg.` 前綴：`state`（單位、課程、證書、規則、版面，含 Logo／印章／簽名 dataURL，圖片縮到 500～600px）、`roster`（**只有勾「記住名單」才存，預設不存**）、`hist`（發證紀錄，只存字號、姓名、遮罩身分證、驗證碼，200 批）、`tpls`（我的範本 20 個，不含名單）、`zoom`、`fs`、`fold`、`warnSeen`、`marquee`。
 - 輸入用 `data-b="unit.name"` 路徑綁定；select／checkbox 有 `data-rp` 才重畫面板。選計畫別會覆蓋規則與證書名稱。
 - 證書 `certHtml()` 絕對定位 mm；橫式 297×210、直式 210×297，列印用 named page（`@page land/port`，`.sheet.land{page:land}`），證書橫式＋清冊直式可混印。清冊每頁 18 人。
 - QR 用 cdnjs `qrcodejs/1.0.0`（動態載入，canvas 轉 dataURL），驗證碼與 QR 非同步補上（`fillAsync`、`PENDING`），列印前等 `PENDING`。
+- **QR 格式 v2**（2026-11-17）：`2␟單位␟證書名稱␟字號␟姓名␟課程␟時數␟發證日yyyymmdd␟驗證碼␟電話` base64url（約 276 字網址、QR version 11），QR 25mm（每格約 0.41mm）。原本 v1 JSON 含起訖日、version 13 壓在 20mm（每格 0.26mm），整頁 150dpi 就掃不到，所以改版；`readPayload` 仍讀得懂 v1。驗證碼算法沒變，舊證書照樣查得過。**QR 內容別再加欄位**，會變密。
+- 沒登入的人用 `#v=` 進來時 `body.verify-only` 把整個工具藏起來，只剩查驗畫面。
 - `fmt.frame`（預設 true）：取消勾選「印邊框與底紋」＝只印文字（不畫 frame／watermark、`pal()` 把底色改白），給現成有框證書紙用；文字位置不變。2026-11-17 使用者要求加。
 - 印章：程式產生（示意）／上傳圖檔／留用印處／不印；負責人小章 3 字加「印」、2 字加「之印」，inline 放在姓名後。
 - 測試掛鉤 `window._tcg`（gateOpen、S、ROSTER、HIST、ACT、items、loadExample、setRoster、PENDING）。
 
 ## 驗證
 - `python tools/e2e_cert.py [輸出資料夾]`（先開 8889）：首訪警語、範例一 6 頁（3 證書＋3 背面）、字號連號、QR／驗證碼、本文不壓落款、`page.pdf()` 6 頁橫式 A4、清冊直式＋遮罩＋未發證原因、三範例張數、Excel 名單匯入（含 Excel 日期序號）、確認發證後流水號、`#v=` 查驗相符＋比對紀錄、名單不保留、375px 無溢出、無 console 錯誤；序號閘門用 `page.route` 假造授權回應（GOOD／OLD／其他）測擋住、錯序號、過期、解鎖、自動登入、登出、沒序號的人掃 QR 可查驗。2026-11-17 全過（32 項，含只印文字）；PDF 轉圖目視過。
-- **實體印表機、證書紙、雙面背面對齊未實測**；楷書在非 Windows 用 LXGW WenKai TC（Google Fonts）。
+- `python tools/e2e_qr.py`（預設測線上版＋真實序號 mark0131；本機設 `TCG_BASE=http://localhost:8889/`）：登入→列印 PDF→第一頁轉 300dpi→用 jsQR（jsdelivr）從**整頁**找 QR，依序降到 150／120／100dpi→沒登入的手機打開解出的網址→查驗內容、無身分證、驗證碼一致、正確／錯誤密語、竄改姓名抓得到。2026-11-17：300／150／120dpi 掃得到、100dpi 掃不到。
+- **實體印表機、證書紙、雙面背面對齊未實測；QR 也還沒用真手機掃過紙本**；楷書在非 Windows 用 LXGW WenKai TC（Google Fonts）。
 
 ## 標準配備
 跑馬燈（工作區公告 GAS，滑鼠移入暫停）、⚙ 常用設定（顯示、範本、發證紀錄、清除名單、清除全部、關於）、首訪警語＋頁面入口、`manual.html#creator`（改 `tools/manual_body.html` 後跑 `python tools/build_manual.py`）、PWA（`tools/make_icons.py`；上線改版升 `service-worker.js` 的 `CACHE_NAME`）、訪客計數器。有登入序號閘門（見上）、無 AI、無浮水印（證書是給學員的正式文件）。

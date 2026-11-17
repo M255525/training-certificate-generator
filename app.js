@@ -38,7 +38,7 @@ function setPath(p, v){ var a = p.split('.'), o = S; for(var i = 0; i < a.length
 
 /* ---------- 共用 ---------- */
 function openModal(h){ $('modalBox').innerHTML = h; $('modal').classList.add('show'); }
-function closeModal(){ $('modal').classList.remove('show'); if(VERIFY_MODE){ VERIFY_MODE = false; if(!gateOpen) $('entryGate').classList.remove('hidden'); } }
+function closeModal(){ $('modal').classList.remove('show'); if(VERIFY_MODE){ VERIFY_MODE = false; document.body.classList.remove('verify-only'); if(!gateOpen) $('entryGate').classList.remove('hidden'); } }
 var toastT;
 function toast(s){ var t = document.querySelector('.toast'); if(!t){ t = document.createElement('div'); t.className = 'toast'; document.body.appendChild(t); } t.textContent = s; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(function(){ t.hidden = true; }, 3000); }
 function download(blob, name){ var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 800); }
@@ -188,7 +188,7 @@ function loadQR(){
 function qrData(text){
   if(QRS[text]) return QRS[text];
   var d = document.createElement('div'); d.style.cssText = 'position:fixed;left:-9999px;top:0'; document.body.appendChild(d);
-  try{ new window.QRCode(d, {text:text, width:300, height:300, correctLevel:window.QRCode.CorrectLevel.L}); var cv = d.querySelector('canvas'); QRS[text] = cv ? cv.toDataURL('image/png') : (d.querySelector('img') || {}).src || ''; }
+  try{ new window.QRCode(d, {text:text, width:400, height:400, correctLevel:window.QRCode.CorrectLevel.L}); var cv = d.querySelector('canvas'); QRS[text] = cv ? cv.toDataURL('image/png') : (d.querySelector('img') || {}).src || ''; }
   catch(e){ QRS[text] = ''; }
   d.remove(); return QRS[text];
 }
@@ -500,7 +500,7 @@ function openVerify(d){
   VDATA = d;
   var h = '<h2>🔍 查驗證書</h2>';
   if(d){
-    h += '<p class="small">以下是證書 QR code 裡的資料：</p><div class="vcard"><dl><dt>發證單位</dt><dd>' + esc(d.unit) + '</dd><dt>證書</dt><dd>' + esc(d.title) + '</dd><dt>證書字號</dt><dd>' + esc(d.no) + '</dd><dt>姓名</dt><dd>' + esc(d.name) + '</dd><dt>課程</dt><dd>' + esc(d.course) + '</dd><dt>訓練期間</dt><dd>' + esc(P.fmtDate(d.start, 'rocn') + (d.end && d.end !== d.start ? '～' + P.fmtDate(d.end, 'rocn') : '')) + '</dd><dt>時數</dt><dd>' + esc(d.hours) + ' 小時</dd><dt>發證日期</dt><dd>' + esc(P.fmtDate(d.date, 'rocn')) + '</dd><dt>驗證碼</dt><dd>' + esc(d.code || '（未設定）') + '</dd></dl></div>' +
+    h += '<p class="small">以下是證書 QR code 裡的資料：</p><div class="vcard"><dl><dt>發證單位</dt><dd>' + esc(d.unit) + '</dd><dt>證書</dt><dd>' + esc(d.title) + '</dd><dt>證書字號</dt><dd>' + esc(d.no) + '</dd><dt>姓名</dt><dd>' + esc(d.name) + '</dd><dt>課程</dt><dd>' + esc(d.course) + '</dd>' + (d.start ? '<dt>訓練期間</dt><dd>' + esc(P.fmtDate(d.start, 'rocn') + (d.end && d.end !== d.start ? '～' + P.fmtDate(d.end, 'rocn') : '')) + '</dd>' : '') + '<dt>時數</dt><dd>' + esc(d.hours) + ' 小時</dd><dt>發證日期</dt><dd>' + esc(P.fmtDate(d.date, 'rocn')) + '</dd><dt>驗證碼</dt><dd>' + esc(d.code || '（未設定）') + '</dd></dl></div>' +
       '<div class="alert warn">這只是 QR code 裡記載的內容，<b>不代表證書一定是真的</b>。要確認真偽，請比對紙本證書是否一致，並向發證單位查詢' + (d.tel ? '（電話 ' + esc(d.tel) + '）' : '') + '。</div>' +
       '<p style="margin-top:.8rem"><b>我是發證單位：</b>輸入單位密語檢查驗證碼。</p>';
   } else {
@@ -577,7 +577,7 @@ function initMarquee(){
 window.addEventListener('beforeinstallprompt', function(e){ e.preventDefault(); window._dp = e; });
 if('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('service-worker.js').catch(function(){});
 window.addEventListener('resize', function(){ if(!lsGet('zoom')) applyZoom(); });
-function checkHash(){ var m = location.hash.match(/^#v=([A-Za-z0-9_-]+)/); if(m){ VERIFY_MODE = true; $('entryGate').classList.add('hidden'); var d = P.readPayload(m[1]); if(d) openVerify(d); else openModal('<h2>🔍 查驗證書</h2><div class="alert bad">讀不懂這個 QR code 的內容，可能不完整或被改過。</div><div class="stack"><button class="btn" data-act="close">關閉</button></div>'); return true; } return false; }
+function checkHash(){ var m = location.hash.match(/^#v=([A-Za-z0-9_-]+)/); if(m){ VERIFY_MODE = true; $('entryGate').classList.add('hidden'); if(!gateOpen) document.body.classList.add('verify-only'); var d = P.readPayload(m[1]); if(d) openVerify(d); else openModal('<h2>🔍 查驗證書</h2><div class="alert bad">讀不懂這個 QR code 的內容，可能不完整或被改過。</div><div class="stack"><button class="btn" data-act="close">關閉</button></div>'); return true; } return false; }
 window.addEventListener('hashchange', checkHash);
 /* ---------- 登入序號閘門（複製自 小工具/next-bus-helper）----------
    序號在試算表「辦訓相關」的分頁「辦訓單位課程訓練證書」，由綁定的 Apps Script（gas/Code.js）驗證。
@@ -640,7 +640,7 @@ function gateDays(l){
 }
 function gateUnlock(l){
   gateStatus('ok', '✓ ' + gateDays(l)); gateHead(l);
-  $('entryGate').classList.add('hidden');
+  $('entryGate').classList.add('hidden'); document.body.classList.remove('verify-only');
   var first = !gateOpen; gateOpen = true;
   if(first){
     if(!saved && !ROSTER.length) loadExample('tims');
