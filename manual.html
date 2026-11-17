@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>訓練證書產生器・操作手冊</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1F2544;--sub:#5D6385;--bg:#EEF1F4;--paper:#FFFDF7;--line:#E3D8C2;--navy:#1D2B3A;--gold:#F2B134;--red:#C8372D;--blue:#34447F}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;font-weight:500;font-size:17px;line-height:1.75}
+main{max-width:800px;margin:0 auto;padding:20px 16px 48px}
+h1,h2{font-family:'Noto Sans TC',sans-serif;font-weight:900;line-height:1.35}
+h1{font-size:30px;margin:0 0 6px;color:var(--navy)}
+h2{font-size:22px;margin:4px 0 8px;color:var(--navy)}
+section{background:var(--paper);border-radius:14px;box-shadow:0 0 0 1.5px var(--line),0 4px 0 var(--line);padding:12px 18px 14px;margin-top:14px}
+a{color:var(--blue);font-weight:700}
+li{margin:5px 0}
+ol,ul{padding-left:1.3em}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:15px;min-width:540px}
+th,td{border:1px solid var(--line);padding:5px 8px;text-align:left;vertical-align:top}
+th{background:var(--bg)}
+.red{color:var(--red);font-weight:900}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#e11d2e;margin-right:3px}
+@media print{body{background:#fff}section{break-inside:avoid;box-shadow:0 0 0 1px #888}}
+</style>
+</head>
+<body>
+<main>
+<h1>📜 訓練證書產生器・操作手冊</h1>
+<p><a href="index.html">← 回到產生器</a></p>
+
+<section>
+<h2>這是什麼</h2>
+<p>給<b>辦訓單位</b>（協會、學校推廣部、職訓機構、企業訓練單位）用的證書產生器：填一次單位與課程資料，貼上學員名單，就會依<b>出席率與成績</b>判斷誰可以發證、自動編<b>證書字號</b>，一人一頁 A4 證書可以直接列印或存成 PDF，並附<b>核發清冊</b>（可印、可下載 Excel）。</p>
+<p>不用註冊、不用安裝；名單只在你的瀏覽器處理，不會上傳。</p>
+</section>
+
+<section>
+<h2>五個步驟</h2>
+<ol>
+<li><b>發證單位</b>：單位全銜、負責人、電話地址；上傳 Logo、印章圖檔、負責人簽名（建議去背 PNG）。</li>
+<li><b>課程資料</b>：選計畫別（會套用建議門檻）、課程名稱、期別、日期、總時數；科目表可從 Excel 貼上。</li>
+<li><b>發證條件與證書文字</b>：出席門檻（2/3、80%、100%）、要不要看成績、證書名稱、字號樣板、發證日期、本文。</li>
+<li><b>學員名單</b>：從 Excel 複製貼上，或開啟 .xlsx／.csv。每個人會顯示「✓ 可發證」或未達條件的原因。</li>
+<li><b>版型與列印</b>：選 6 種版型之一，按「🖨 列印／存 PDF」。</li>
+</ol>
+</section>
+
+<section>
+<h2>名單格式</h2>
+<p>第一列放標題最好，會自動對欄位：</p>
+<div class="tw"><table>
+<tr><th>欄位</th><th>說明</th></tr>
+<tr><td>姓名</td><td>必填</td></tr>
+<tr><td>英文姓名</td><td>中英對照證書才會用到</td></tr>
+<tr><td>身分證字號</td><td>會自動檢查檢查碼；外籍人士居留證新式（第二碼 8／9）也能檢查</td></tr>
+<tr><td>出生日期</td><td>2026-01-05、2026/1/5、79/01/05（民國）、Excel 日期都可以</td></tr>
+<tr><td>出席時數</td><td>空白＝全勤</td></tr>
+<tr><td>成績</td><td>勾了「要看成績」時才會判斷</td></tr>
+<tr><td>備註</td><td>會印在清冊</td></tr>
+</table></div>
+<p>沒有標題列也可以：第一欄當姓名，其他欄依內容猜（像身分證的、像日期的、數字）。按「⬇ 名單範本 .xlsx」可以下載空白範本。</p>
+<p>表格最左邊的勾選框可以把某個人排除（例如退訓、改期）。</p>
+</section>
+
+<section>
+<h2>發證條件</h2>
+<ul>
+<li>出席門檻可以寫 <b>2/3</b>、<b>80%</b>、<b>100%</b>。算法：出席時數 ÷ 總時數 ≥ 門檻。</li>
+<li>計畫別只是幫你帶入<b>建議的</b>預設值（例如產業人才投資方案帶入出席 2/3 且考評及格）。<span class="red">實際規定請以各計畫最新的作業規定為準</span>；計畫若規定證書須由系統核發或有固定格式，請依規定。</li>
+<li>「只印符合發證條件的人」取消勾選時，所有勾選的人都會印（預覽會標「未達發證條件」，列印時不會出現這個標籤）。</li>
+</ul>
+</section>
+
+<section>
+<h2>證書字號</h2>
+<p>字號樣板裡可以用：<b>{年}</b>＝發證日期的民國年、<b>{號}</b>＝流水號（依「補零位數」補 0）、<b>{期}</b>＝班別期別。例如「（{年}）示訓字第{號}號」→（115）示訓字第0001號。</p>
+<p>只有要發證的人才會分配字號，依名單順序往下編。印好、核對無誤後按 <b>✅ 確認發證</b>：這一批字號會記到「🗂 發證紀錄」，起始流水號自動改成下一號，下一班接著編，不會重號。</p>
+</section>
+
+<section>
+<h2>證書本文</h2>
+<p>本文可以自己改，用大括號代入資料：{起日}、{迄日}、{課程}、{班別}、{時數}、{出席時數}、{成績}、{結果}、{單位}、{計畫}、{地點}。點本文下方的小按鈕會插入到游標位置。姓名、身分證字號、出生日期另外排在本文上方。</p>
+<p>中英對照時另有英文本文，可用 {英文姓名}、{英文課程}、{英文單位}、{起日E}、{迄日E}、{發證日E}（英文日期）。</p>
+</section>
+
+<section>
+<h2>印章與簽名</h2>
+<ul>
+<li><b>上傳印章圖檔</b>：最正式。用掃描或拍照的單位印信，去背成透明 PNG 效果最好。</li>
+<li><b>留「用印處」框</b>：列印後親自蓋章。</li>
+<li><b>程式產生示意印章</b>：依你輸入的文字自動排成紅色方印，<b>只是排版示意，不是印信</b>，適合內部研習或先看版面。</li>
+<li>負責人小章依負責人姓名產生（三個字加「印」、兩個字加「之印」）。</li>
+</ul>
+</section>
+
+<section>
+<h2>QR code 與驗證碼</h2>
+<p>每張證書可以印一個 QR code，手機掃了會打開本工具的查驗畫面，顯示證書字號、姓名、課程、時數與發證日期（<b>不含身分證字號</b>）。</p>
+<p>在「發證條件與證書文字」設定一組<b>單位密語</b>後，證書會多印一組 8 碼驗證碼。驗證碼是用密語對「字號＋姓名＋課程＋發證日＋時數」算出來的（HMAC-SHA256），只有知道密語的發證單位才算得出來：</p>
+<ul>
+<li>有人拿證書來詢問時，發證單位在「🔍 查驗證書」輸入密語，就能確認資料有沒有被改過。</li>
+<li>這<b>不是電子簽章</b>，也沒有線上資料庫；密語外流的話別人也算得出來，請妥善保管。換密語後，舊證書要用舊密語查。</li>
+<li>這台電腦的「發證紀錄」裡有同一個字號時，查驗畫面也會比對姓名。</li>
+</ul>
+</section>
+
+<section>
+<h2>六種版型</h2>
+<ul>
+<li><b>典雅金框</b>（橫式）：米色紙、金色繩紋框、四角團花，傳統獎狀風。</li>
+<li><b>公文素雅</b>（直式）：白底雙線框、回紋角飾。</li>
+<li><b>藍色專業</b>（橫式）：深藍花紋外框、金線、中央團花浮水印。</li>
+<li><b>現代簡約</b>（橫式）：左側色帶，適合放單位 Logo。</li>
+<li><b>清新綠意</b>（直式）：綠色弧形角飾。</li>
+<li><b>黑白省墨</b>（橫式）：只有線條；用現成有底紋的證書紙時選這個。</li>
+</ul>
+<p>每個版型都可以改方向、字體（楷書／明體／黑體）與主色。花紋全部是程式畫的，沒有使用任何圖片素材。楷書在 Windows 會用「標楷體」，其他裝置用霞鶩文楷。</p>
+</section>
+
+<section>
+<h2>列印</h2>
+<ul>
+<li>紙張 <b>A4</b>、縮放 <b>100%</b>、邊界<b>無</b>，並勾選<b>背景圖形</b>。</li>
+<li>橫式版型會自動用橫向頁面。要存 PDF，印表機選「另存為 PDF」。</li>
+<li>「科目表另印背面」時用雙面列印（橫式短邊翻頁、直式長邊翻頁）。</li>
+<li>預覽上方切到「📋 核發清冊」再按列印，就是印清冊（直式，最後有承辦人、主管簽章欄）。清冊也能下載 .xlsx／CSV。</li>
+</ul>
+</section>
+
+<section>
+<h2>範本與設定檔</h2>
+<ul>
+<li><b>💾 存成範本</b>：單位、課程、證書格式、版型、圖片存在這台電腦，下一班直接套用（不含名單）。最多 20 個。</li>
+<li><b>⬇ 匯出設定檔</b>：存成 .json 帶到另一台電腦；可以選擇要不要包含名單與密語。</li>
+</ul>
+</section>
+
+<section>
+<h2>隱私</h2>
+<ul>
+<li>名單（含身分證字號、出生日期）只在你的瀏覽器處理，不會上傳到任何伺服器。</li>
+<li>預設<b>不記住名單</b>：重新整理後名單就不見了。需要時可勾「在這台電腦記住名單」，公用電腦請不要勾。</li>
+<li>發證紀錄只存字號、姓名、遮罩後的身分證字號與驗證碼。</li>
+<li>⚙ 常用設定裡有「🔒 清除名單」與「🧹 清除全部資料」。</li>
+</ul>
+</section>
+
+<section>
+<h2>⚠ 使用警語</h2>
+<ul>
+<li>本工具只協助排版、計算出席率與編號。發證條件請依各計畫最新規定與主管機關公告，內建預設門檻僅供參考，不是法規解釋。</li>
+<li>證書上的單位名稱、負責人、印信必須是貴單位的真實資料。不得冒用其他機關、學校或單位名義，也不得製作未實際參訓的證書；偽造、變造證書可能觸犯偽造文書等刑責。</li>
+<li>程式產生的印章只是排版示意，不是印信。</li>
+<li>名單含個資，請依個人資料保護法的蒐集目的使用。</li>
+<li>QR 驗證碼不是電子簽章。範例中的單位、人名、身分證字號全部虛構。</li>
+</ul>
+</section>
+
+<section id="creator">
+<h2>👤 關於創作者</h2>
+<div class="mk-creator">
+<style>.mk-creator{line-height:1.75}.mk-creator h3{margin:14px 0 6px;font-size:1.05em}.mk-creator table{width:100%;border-collapse:collapse;font-size:.95em}.mk-creator td,.mk-creator th{text-align:left;padding:5px 6px;border-bottom:1px solid rgba(128,128,128,.3);vertical-align:top}.mk-creator th{white-space:nowrap}.mk-creator ul{margin:4px 0;padding-left:1.4em}.mk-creator .mk-tags{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0}.mk-creator .mk-tags span{border:1px solid rgba(128,128,128,.45);border-radius:999px;padding:1px 10px;font-size:.9em}</style>
+<p><b>Mark Tsai（蔡豐全）</b>為深耕創業輔導與數位轉型領域的顧問與講師，長期擔任勞動力發展署創業顧問與多項政府計畫的顧問、業師與評審委員，協助中小企業導入數據分析與 AI 工具、申請政府補助計畫，並具備跨境電商實務與講師培訓的豐富經驗。本工具是其推廣 AI 工具運用於教學與課程情境的作品之一。</p>
+<p>聯絡信箱：<a href="mailto:tsaimark@gmail.com">tsaimark@gmail.com</a></p>
+<h3>專長</h3>
+<div class="mk-tags"><span>銷售數據分析</span><span>AI 工具運用</span><span>政府補助計畫申請</span><span>創業</span><span>跨境電商</span></div>
+<h3>證照</h3>
+<table>
+<thead><tr><th>年度</th><th>證照</th></tr></thead>
+<tbody>
+<tr><td>2013</td><td>青創總會 創業輔導顧問師班</td></tr>
+<tr><td>2014</td><td>青創總會 網路行銷講師培訓班</td></tr>
+<tr><td>2016</td><td>阿里巴巴 P4P 認證講師</td></tr>
+<tr><td>2017</td><td>iCap 訓練規劃與評量職能基準課程</td></tr>
+<tr><td>2023</td><td>iCap 職能導向課程申請認證實作班</td></tr>
+<tr><td>2025</td><td>iPAS AI 應用規劃師－初級</td></tr>
+<tr><td>2025</td><td>新北市社會局 社區數位陪伴員</td></tr>
+</tbody>
+</table>
+<h3>經歷</h3>
+<ul>
+<li>勞動力發展署桃竹苗分署 創業顧問（2017－迄今）</li>
+<li>勞動力發展署（北北基）小型企業人力提升計畫 顧問（2019－迄今）</li>
+<li>勞動力發展署（桃竹苗）小型企業人力提升計畫 顧問（2019－迄今）</li>
+<li>農業部農業科技司「科技農企業雙軸轉型躍升發展」科技計畫 業師（2025－2026）</li>
+<li>勞動力發展署 企業人力資源提升計畫 審查委員（2024）</li>
+<li>勞動力發展署 職前訓練評鑑計畫 委員（2022）</li>
+<li>勞動部桃竹苗分署 桃竹苗區域運籌人力資源整合服務計畫 顧問（2022－2023）</li>
+<li>經濟部中小企業處 SBIR 海選專案 評審委員（2019－2024）</li>
+<li>勞動力發展署 數位學習課程清單審查會議 審查委員（2024－2025）</li>
+<li>輔仁大學創新跨領域學院 課務委員（2024－2025）</li>
+<li>台北市進出口商業同業公會 跨境電商生態村 顧問</li>
+<li>台灣網商協會 顧問</li>
+<li>中華職能開發策進會 顧問（2018－2020）</li>
+<li>新北市汽車美容人員職業工會 顧問（2023－迄今）</li>
+<li>中華網路行銷講師協會 顧問（2022－迄今）</li>
+<li>新北市社企電商基地 輔導顧問（2018－2020）</li>
+<li>阿里巴巴國際站平台 認證講師（2016）</li>
+<li>巨匠電腦 跨境電子商務班 講師（2016－2017）</li>
+</ul>
+</div>
+</section>
+<p style="text-align:center"><a href="index.html">← 回到產生器</a></p>
+</main>
+</body>
+</html>

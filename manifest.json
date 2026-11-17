@@ -1,0 +1,16 @@
+{
+  "name": "訓練證書產生器",
+  "short_name": "訓練證書",
+  "description": "辦訓單位的結訓證書、研習證明產生器：依出席率與成績判斷發證、自動編字號、一人一頁 A4 證書與核發清冊",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1D2B3A",
+  "theme_color": "#1D2B3A",
+  "lang": "zh-TW",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
