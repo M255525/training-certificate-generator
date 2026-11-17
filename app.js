@@ -56,7 +56,7 @@ function items(){
   return out;
 }
 function orient(){ return S.orient === 'land' || S.orient === 'port' ? S.orient : P.STYLES[S.style].orient; }
-function pal(){ var p = Object.assign({}, ART.PALETTE[S.style]); if(S.color && /^#[0-9a-f]{6}$/i.test(S.color) && S.style !== 'mono') p.c1 = S.color; return p; }
+function pal(){ var p = Object.assign({}, ART.PALETTE[S.style]); if(S.color && /^#[0-9a-f]{6}$/i.test(S.color) && S.style !== 'mono') p.c1 = S.color; if(S.fmt.frame === false) p.pp = '#FFFFFF'; return p; }
 
 /* ---------- 證書 HTML ---------- */
 function bodySize(len, land){ return land ? (len <= 80 ? 6.3 : len <= 110 ? 5.8 : len <= 150 ? 5.3 : 4.8) : (len <= 70 ? 6 : len <= 100 ? 5.5 : len <= 140 ? 5 : 4.5); }
@@ -89,7 +89,7 @@ function certHtml(it, idx){
   var body = parts.map(function(p){ return p.k === '課程' || p.k === '時數' ? '<b>' + esc(p.t) + '</b>' : esc(p.t); }).join('').replace(/\n/g, '<br>');
   var nmLen = Array.from(r.name).length, nsz = nmLen <= 4 ? (land ? 11 : 10) : nmLen <= 6 ? 9 : 7;
   var h = '<div class="sheet cert ' + (land ? 'land' : 'port') + ' f-' + (F.font || 'kai') + ' st-' + st + '" style="--pp:' + pl.pp + ';--tx:' + pl.tx + ';--c1:' + pl.c1 + ';--c2:' + pl.c2 + '">' +
-    ART.watermark(st, W, H, pl.c1) + ART.frame(st, W, H, pl.c1, pl.c2);
+    (F.frame === false ? '' : ART.watermark(st, W, H, pl.c1) + ART.frame(st, W, H, pl.c1, pl.c2)); // 取消「印邊框與底紋」＝只印文字（現成證書紙用）
   if(F.showNo && it.no) h += '<div class="cno" style="top:' + (st === 'official' ? 20 : 20) + 'mm;right:' + (st === 'official' ? R : R - 6) + 'mm">' + esc(it.no) + '</div>';
   h += '<div class="cin" style="left:' + L + 'mm;right:' + R + 'mm;top:' + (land ? 22 : 40) + 'mm">';
   if(u.logo) h += '<div class="logo"><img src="' + u.logo + '" alt=""></div>'; else h += '<div style="height:' + (land ? 6 : 10) + 'mm"></div>';
@@ -240,7 +240,7 @@ function sums(){
     ex:S.src ? (P.EXAMPLES.filter(function(e){ return e.id === S.src; })[0] || {}).n || S.src : '',
     unit:S.unit.name || '尚未填寫', course:(S.course.name || '尚未填寫') + (S.course.hours ? '・' + S.course.hours + 'h' : ''),
     cert:S.cert.title + '・' + P.serialNo(S.cert.tpl, +S.cert.next || 1, {date:S.cert.date, digits:S.cert.digits, term:S.course.term}),
-    roster:ROSTER.length ? ROSTER.length + ' 人・發證 ' + ok : '尚無名單', look:P.STYLES[S.style].n + '・' + (orient() === 'land' ? '橫式' : '直式'),
+    roster:ROSTER.length ? ROSTER.length + ' 人・發證 ' + ok : '尚無名單', look:P.STYLES[S.style].n + '・' + (orient() === 'land' ? '橫式' : '直式') + (S.fmt.frame === false ? '・只印文字' : ''),
   };
 }
 function updateSums(){ var s = sums(); Object.keys(s).forEach(function(k){ var e = document.querySelector('[data-sv="' + k + '"]'); if(e) e.textContent = s[k]; }); }
@@ -317,7 +317,7 @@ function renderPanel(){
     (S.color ? '<div class="go" style="margin-top:.2rem"><button class="btn alt sm" data-act="resetColor">↺ 版型原色</button></div>' : '') +
     '<div class="row2">' + sel('fmt.body', '本文日期格式', [['rocn', '115年11月17日'], ['roc', '中華民國115年11月17日'], ['ad', '2026年11月17日']]) + sel('fmt.foot', '落款日期', [['rocc', '中華民國一百一十五年…'], ['roc', '中華民國115年…'], ['ad', '西元2026年…'], ['en', 'November 17, 2026']]) + '</div>' +
     chk('fmt.showId', '印身分證字號', true) + (S.fmt.showId ? sel('fmt.idMode', '身分證字號顯示', [['mask', '遮罩 A12****789（建議）'], ['full', '完整顯示'], ['hide', '不顯示']]) : '') +
-    chk('fmt.showBirth', '印出生日期') + chk('fmt.showNo', '印證書字號') + chk('fmt.showEn', '中英對照（英文標題、英文姓名、英文本文）', true) + chk('fmt.qr', 'QR code（掃描看證書資料＋驗證碼）') +
+    chk('fmt.frame', '印邊框與底紋（取消勾選＝只印文字，印在現成的證書紙上）') + chk('fmt.showBirth', '印出生日期') + chk('fmt.showNo', '印證書字號') + chk('fmt.showEn', '中英對照（英文標題、英文姓名、英文本文）', true) + chk('fmt.qr', 'QR code（掃描看證書資料＋驗證碼）') +
     sel('fmt.subj', '科目表', [['none', '不印'], ['below', '印在本文下方（一行列出）'], ['back', '另印背面一頁（雙面列印）']]) +
     '<div class="go"><button class="btn gd big" data-act="print">🖨 列印／存 PDF</button><button class="btn alt" data-act="printTips">📋 列印小提醒</button></div>' +
     '<div class="go"><button class="btn alt sm" data-act="regXlsx">⬇ 核發清冊 .xlsx</button><button class="btn alt sm" data-act="regCsv">⬇ 清冊 CSV</button><button class="btn sm" data-act="issue">✅ 確認發證（記錄字號）</button></div>' +

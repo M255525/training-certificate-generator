@@ -74,6 +74,16 @@ async def main():
         for i, pp in enumerate(d):
             if i < 2: pp.get_pixmap(dpi=60).save(os.path.join(OUT, f'page{i + 1}.png'))
 
+        # 只印文字：取消「印邊框與底紋」
+        await pg.click('[data-card="look"] > summary') if not await pg.is_visible('[data-b="fmt.frame"]') else None
+        await pg.uncheck('[data-b="fmt.frame"]')
+        await pg.evaluate('window._tcg.PENDING')
+        fr = await pg.evaluate('''[document.querySelectorAll(".sheet.cert .frame, .sheet.cert .wm").length, getComputedStyle(document.querySelector(".sheet.cert")).backgroundColor, document.querySelectorAll(".sheet.cert .nm").length, document.querySelectorAll(".sheet.cert .seal").length]''')
+        check(fr[0] == 0 and fr[1] == 'rgb(255, 255, 255)' and fr[2] == 3 and fr[3] > 0, f'只印文字：沒有框與浮水印、白底、文字與印章還在 {fr}')
+        await pg.screenshot(path=os.path.join(OUT, 'textonly.png'))
+        await pg.check('[data-b="fmt.frame"]')
+        await pg.evaluate('window._tcg.PENDING')
+        check(await pg.evaluate('document.querySelectorAll(".sheet.cert .frame").length') == 3, '重新勾選：框回來')
         # 清冊：直式
         await pg.click('[data-view="reg"]')
         await pg.evaluate('window._tcg.PENDING')

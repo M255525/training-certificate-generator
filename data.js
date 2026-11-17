@@ -275,7 +275,7 @@ const DEF = {
   course:{plan:'tims', name:'', ename:'', term:'', start:'', end:'', hours:'', place:'', subjects:''},
   cert:{title:'結訓證書', tpl:'（{年}）訓字第{號}號', next:1, digits:4, date:'', body:DEF_BODY, en:DEF_EN, suffix:'君', secret:''},
   rule:{ratio:'2/3', needScore:true, pass:60, result:'經考評成績合格'},
-  fmt:{body:'rocn', foot:'rocc', idMode:'mask', showId:true, showBirth:false, showEn:false, qr:true, subj:'none', font:'kai', showNo:true, onlyOk:true},
+  fmt:{body:'rocn', foot:'rocc', idMode:'mask', showId:true, showBirth:false, showEn:false, qr:true, subj:'none', font:'kai', showNo:true, onlyOk:true, frame:true},
   style:'classic', orient:'auto', color:'',
 };
 

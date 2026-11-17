@@ -30,11 +30,12 @@
 - 輸入用 `data-b="unit.name"` 路徑綁定；select／checkbox 有 `data-rp` 才重畫面板。選計畫別會覆蓋規則與證書名稱。
 - 證書 `certHtml()` 絕對定位 mm；橫式 297×210、直式 210×297，列印用 named page（`@page land/port`，`.sheet.land{page:land}`），證書橫式＋清冊直式可混印。清冊每頁 18 人。
 - QR 用 cdnjs `qrcodejs/1.0.0`（動態載入，canvas 轉 dataURL），驗證碼與 QR 非同步補上（`fillAsync`、`PENDING`），列印前等 `PENDING`。
+- `fmt.frame`（預設 true）：取消勾選「印邊框與底紋」＝只印文字（不畫 frame／watermark、`pal()` 把底色改白），給現成有框證書紙用；文字位置不變。2026-11-17 使用者要求加。
 - 印章：程式產生（示意）／上傳圖檔／留用印處／不印；負責人小章 3 字加「印」、2 字加「之印」，inline 放在姓名後。
 - 測試掛鉤 `window._tcg`（gateOpen、S、ROSTER、HIST、ACT、items、loadExample、setRoster、PENDING）。
 
 ## 驗證
-- `python tools/e2e_cert.py [輸出資料夾]`（先開 8889）：首訪警語、範例一 6 頁（3 證書＋3 背面）、字號連號、QR／驗證碼、本文不壓落款、`page.pdf()` 6 頁橫式 A4、清冊直式＋遮罩＋未發證原因、三範例張數、Excel 名單匯入（含 Excel 日期序號）、確認發證後流水號、`#v=` 查驗相符＋比對紀錄、名單不保留、375px 無溢出、無 console 錯誤；序號閘門用 `page.route` 假造授權回應（GOOD／OLD／其他）測擋住、錯序號、過期、解鎖、自動登入、登出、沒序號的人掃 QR 可查驗。2026-11-17 全過（30 項）；PDF 轉圖目視過。
+- `python tools/e2e_cert.py [輸出資料夾]`（先開 8889）：首訪警語、範例一 6 頁（3 證書＋3 背面）、字號連號、QR／驗證碼、本文不壓落款、`page.pdf()` 6 頁橫式 A4、清冊直式＋遮罩＋未發證原因、三範例張數、Excel 名單匯入（含 Excel 日期序號）、確認發證後流水號、`#v=` 查驗相符＋比對紀錄、名單不保留、375px 無溢出、無 console 錯誤；序號閘門用 `page.route` 假造授權回應（GOOD／OLD／其他）測擋住、錯序號、過期、解鎖、自動登入、登出、沒序號的人掃 QR 可查驗。2026-11-17 全過（32 項，含只印文字）；PDF 轉圖目視過。
 - **實體印表機、證書紙、雙面背面對齊未實測**；楷書在非 Windows 用 LXGW WenKai TC（Google Fonts）。
 
 ## 標準配備
