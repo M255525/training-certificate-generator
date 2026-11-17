@@ -115,8 +115,8 @@ async def main():
         check(st == [2, 1, 9], f'確認發證後下一號 2、紀錄 1 批、存驗證碼 {st}')
 
         # 查驗：用 QR 網址打開
-        url = await pg.evaluate('''async()=>{const f={no:"（115）示訓字第0001號",name:"測試甲",course:window._tcg.S.course.name,date:window._tcg.S.cert.date,hours:window._tcg.S.course.hours};const c=await TCG.verifyCode("DEMO",f);return location.pathname+"#v="+TCG.qrPayload(Object.assign({},f,{code:c,unit:"x",title:"y"}))}''')
-        await pg.goto(BASE.rstrip('/') + url.replace('/index.html', '/') if url.startswith('/') else BASE + url)
+        url = await pg.evaluate('''async()=>{const f={no:"（115）示訓字第0001號",name:"測試甲",course:window._tcg.S.course.name,date:window._tcg.S.cert.date,hours:window._tcg.S.course.hours};const c=await TCG.verifyCode("DEMO",f);return location.href.split("#")[0]+"#v="+TCG.qrPayload(Object.assign({},f,{code:c,unit:"x",title:"y"}))}''')
+        await pg.goto(url)
         await pg.wait_for_selector('#vSecret')
         # 另開一個「沒登入過」的瀏覽器：掃 QR 查驗不需要序號
         ctx2 = await b.new_context()

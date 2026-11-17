@@ -2,7 +2,7 @@
 
 給辦訓單位（協會、學校推廣部、職訓機構、企業訓練單位）用：填單位與課程 → 貼上／開啟學員名單（.xlsx／.csv）→ 依出席率與成績判斷發證資格 → 自動編證書字號 → 一人一頁 A4 證書（6 版型、橫／直式、中英對照、背面科目表）列印或存 PDF → 核發清冊（列印／.xlsx／CSV）→「確認發證」記錄字號、下一批接著編。QR code＋單位密語 HMAC 驗證碼，`#v=` 查驗畫面。
 
-2026-11-17 建立。使用者只說「要可以生成辦訓單位的課程訓練證書」，規格由 Claude 自行決定。**尚未部署**（實驗性新工具，上線前先問使用者；repo 要使用者自己 `gh repo create`）。
+2026-11-17 建立。使用者只說「要可以生成辦訓單位的課程訓練證書」，規格由 Claude 自行決定。**2026-11-17 已上線** <https://m255525.github.io/training-certificate-generator/>（repo 由使用者自己 `gh repo create`；先開 Pages 再推，`github-pages` 環境要補 master 分支許可）。
 
 ## 登入序號閘門（2026-11-17，複製自交通出門助手）
 - 序號表：試算表「辦訓相關」（`1oXn9S2SjupP0o9eJrV-4c0f8o_Cs_ejL9CGCIBGT-LE`）分頁 **「辦訓單位課程訓練證書」**，表頭比對「序號／開始日期／結束日期」，12 個月；選填「人數限制」「目前登入人數」，「已登入裝置」自動維護。`SHEET_NAME` 固定，分頁不存在回 server_error，不退回第一個分頁。
@@ -13,7 +13,7 @@
 - ⚠ 純前端閘門，懂 DevTools 的人可移除遮罩，這是已知取捨（同交通出門助手）。
 
 - 純靜態：`index.html`（CSS，深藍辦公桌＋紅色方印編號風；證書用 mm 排版）＋`data.js`（純函式引擎，node 可 require）＋`io.js`（xlsx／csv 讀寫，**複製自 `課程平台/teacher-classroom-helper/io.js`**，去掉 docx 與名單／題庫解析）＋`art.js`（程式自繪 SVG：繩紋框、團花、回紋、印章、版型縮圖）＋`app.js`（畫面）＋`manual.html`＋PWA。
-- 本機預覽 port **8889**（`.claude/launch.json` 的 `training-certificate-generator`；程式牆 `LOCAL_APPS` 已加）。visitor-badge `m255525.trainingcertificategenerator`。預定線上網址 `ONLINE`＝<https://m255525.github.io/training-certificate-generator/>（QR 會指到這裡的 `#v=`，**沒上線前掃 QR 打不開**）。
+- 本機預覽 port **8889**（`.claude/launch.json` 的 `training-certificate-generator`；程式牆在 `REPO_META`，github-dashboard 已補）。visitor-badge `m255525.trainingcertificategenerator`。線上網址 `ONLINE`＝<https://m255525.github.io/training-certificate-generator/>（QR 指到這裡的 `#v=`）。線上版 e2e：`TCG_BASE=<線上網址> python tools/e2e_cert.py`，2026-11-17 全過；真實序號 mark0131 線上登入也驗過。
 
 ## 引擎（data.js）
 - `PLANS`：計畫別預設門檻（產投 2/3＋及格 60、內訓 80%、研習 100%、自辦 2/3＋成績、自訂）。**只是建議值，介面與警語都寫「依計畫最新規定」**，不要寫成法規條文。
