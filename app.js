@@ -222,7 +222,7 @@ function render(){
 }
 function footer(){
   return '<footer class="foot noprint">👤 創作者 Mark Tsai（蔡豐全）<a href="mailto:tsaimark@gmail.com">tsaimark@gmail.com</a><br><a href="manual.html">📖 操作手冊</a><a href="#" data-act="warn">⚠ 使用警語</a>' +
-    (standalone ? '' : '<a href="#" data-act="install">📲 加入主畫面</a>') + '<a href="https://m255525.github.io/ai-tool-navigator/" target="_blank" rel="noopener">🧭 AI 工具導航</a>' +
+    (standalone ? '' : '<a href="#" data-act="install">📲 加入主畫面</a>') +
     '<br><img src="https://visitor-badge.laobi.icu/badge?page_id=m255525.trainingcertificategenerator" alt="訪客次數" height="20" loading="lazy" style="vertical-align:middle;margin-top:.4rem"></footer>';
 }
 function card(id, no, title, sv, body){ return '<details class="card" data-card="' + id + '"' + (S.open[id] ? ' open' : '') + '><summary><span class="no">' + no + '</span>' + title + '<span class="sv" data-sv="' + id + '">' + esc(sv) + '</span></summary><div class="cb">' + body + '</div></details>'; }
