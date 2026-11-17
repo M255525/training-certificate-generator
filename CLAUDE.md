@@ -4,6 +4,14 @@
 
 2026-11-17 建立。使用者只說「要可以生成辦訓單位的課程訓練證書」，規格由 Claude 自行決定。**尚未部署**（實驗性新工具，上線前先問使用者；repo 要使用者自己 `gh repo create`）。
 
+## 登入序號閘門（2026-11-17，複製自交通出門助手）
+- 序號表：試算表「辦訓相關」（`1oXn9S2SjupP0o9eJrV-4c0f8o_Cs_ejL9CGCIBGT-LE`）分頁 **「辦訓單位課程訓練證書」**，表頭比對「序號／開始日期／結束日期」，12 個月；選填「人數限制」「目前登入人數」，「已登入裝置」自動維護。`SHEET_NAME` 固定，分頁不存在回 server_error，不退回第一個分頁。
+- 後端 `gas/Code.js`（複製自 `小工具/next-bus-helper/gas/Code.js`，只改 SHEET_NAME）＋`gas/appsscript.json`，綁定腳本 scriptId `1WwyRuuCJB6-OmTkQ-ZFrOTFuXLBUMgVyy0RuFrTwqwux_CfE5slIBV5A`（`gas/.clasp.json` 不進版控）。改後端：`cd gas && clasp push --force && clasp deploy -i AKfycbw2qz-sTKRVkVHGQZLTj73xlJdDiaHG8eNexjAN9XWMrly5BnxVcP8dC0qE3kADHeIl`（更新既有部署，網址不變）。
+- 前端：`#entryGate` 全螢幕擋住整個工具（列印時隱藏）。開啟時 fail-closed；已登入後背景重驗（每 20 分鐘）只有連線失敗或 server_error 不上鎖，過期或查無序號才上鎖。localStorage `tcgEntrySerial`／`tcgEntryClientId`，刻意不用 `tcg.` 前綴，⚙「清除全部資料」不會登出；登出在 ⚙「登入序號」。序號輸入框預設遮住。
+- **例外：`#v=` 查驗畫面不需要序號**（拿證書的學員、用人單位沒有序號）；關掉查驗畫面後若沒登入就回到閘門（`VERIFY_MODE`）。
+- 首訪警語與載入範例改在第一次解鎖後才做（`gateUnlock`）。
+- ⚠ 純前端閘門，懂 DevTools 的人可移除遮罩，這是已知取捨（同交通出門助手）。
+
 - 純靜態：`index.html`（CSS，深藍辦公桌＋紅色方印編號風；證書用 mm 排版）＋`data.js`（純函式引擎，node 可 require）＋`io.js`（xlsx／csv 讀寫，**複製自 `課程平台/teacher-classroom-helper/io.js`**，去掉 docx 與名單／題庫解析）＋`art.js`（程式自繪 SVG：繩紋框、團花、回紋、印章、版型縮圖）＋`app.js`（畫面）＋`manual.html`＋PWA。
 - 本機預覽 port **8889**（`.claude/launch.json` 的 `training-certificate-generator`；程式牆 `LOCAL_APPS` 已加）。visitor-badge `m255525.trainingcertificategenerator`。預定線上網址 `ONLINE`＝<https://m255525.github.io/training-certificate-generator/>（QR 會指到這裡的 `#v=`，**沒上線前掃 QR 打不開**）。
 
@@ -23,11 +31,11 @@
 - 證書 `certHtml()` 絕對定位 mm；橫式 297×210、直式 210×297，列印用 named page（`@page land/port`，`.sheet.land{page:land}`），證書橫式＋清冊直式可混印。清冊每頁 18 人。
 - QR 用 cdnjs `qrcodejs/1.0.0`（動態載入，canvas 轉 dataURL），驗證碼與 QR 非同步補上（`fillAsync`、`PENDING`），列印前等 `PENDING`。
 - 印章：程式產生（示意）／上傳圖檔／留用印處／不印；負責人小章 3 字加「印」、2 字加「之印」，inline 放在姓名後。
-- 測試掛鉤 `window._tcg`（S、ROSTER、HIST、ACT、items、loadExample、setRoster、PENDING）。
+- 測試掛鉤 `window._tcg`（gateOpen、S、ROSTER、HIST、ACT、items、loadExample、setRoster、PENDING）。
 
 ## 驗證
-- `python tools/e2e_cert.py [輸出資料夾]`（先開 8889）：首訪警語、範例一 6 頁（3 證書＋3 背面）、字號連號、QR／驗證碼、本文不壓落款、`page.pdf()` 6 頁橫式 A4、清冊直式＋遮罩＋未發證原因、三範例張數、Excel 名單匯入（含 Excel 日期序號）、確認發證後流水號、`#v=` 查驗相符＋比對紀錄、名單不保留、375px 無溢出、無 console 錯誤。2026-11-17 全過；PDF 轉圖目視過。
+- `python tools/e2e_cert.py [輸出資料夾]`（先開 8889）：首訪警語、範例一 6 頁（3 證書＋3 背面）、字號連號、QR／驗證碼、本文不壓落款、`page.pdf()` 6 頁橫式 A4、清冊直式＋遮罩＋未發證原因、三範例張數、Excel 名單匯入（含 Excel 日期序號）、確認發證後流水號、`#v=` 查驗相符＋比對紀錄、名單不保留、375px 無溢出、無 console 錯誤；序號閘門用 `page.route` 假造授權回應（GOOD／OLD／其他）測擋住、錯序號、過期、解鎖、自動登入、登出、沒序號的人掃 QR 可查驗。2026-11-17 全過（30 項）；PDF 轉圖目視過。
 - **實體印表機、證書紙、雙面背面對齊未實測**；楷書在非 Windows 用 LXGW WenKai TC（Google Fonts）。
 
 ## 標準配備
-跑馬燈（工作區公告 GAS，滑鼠移入暫停）、⚙ 常用設定（顯示、範本、發證紀錄、清除名單、清除全部、關於）、首訪警語＋頁面入口、`manual.html#creator`（改 `tools/manual_body.html` 後跑 `python tools/build_manual.py`）、PWA（`tools/make_icons.py`；上線改版升 `service-worker.js` 的 `CACHE_NAME`）、訪客計數器。無序號、無 AI、無浮水印（證書是給學員的正式文件）。
+跑馬燈（工作區公告 GAS，滑鼠移入暫停）、⚙ 常用設定（顯示、範本、發證紀錄、清除名單、清除全部、關於）、首訪警語＋頁面入口、`manual.html#creator`（改 `tools/manual_body.html` 後跑 `python tools/build_manual.py`）、PWA（`tools/make_icons.py`；上線改版升 `service-worker.js` 的 `CACHE_NAME`）、訪客計數器。有登入序號閘門（見上）、無 AI、無浮水印（證書是給學員的正式文件）。

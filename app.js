@@ -28,6 +28,7 @@ var ROSTER = S.keepRoster ? lsJson('roster', []) : [];
 var HIST = lsJson('hist', []);
 var TPLS = lsJson('tpls', []);
 var LAST = [];
+var gateOpen = false, VERIFY_MODE = false; // 登入序號閘門；VERIFY_MODE＝從證書 QR 進來的查驗畫面，不需要序號
 function save(){
   if(!lsSet('state', JSON.stringify(S))) toast('⚠ 瀏覽器空間不足，圖片可能太大，設定沒有存起來');
   if(S.keepRoster) lsSet('roster', JSON.stringify(ROSTER)); else lsDel('roster');
@@ -37,7 +38,7 @@ function setPath(p, v){ var a = p.split('.'), o = S; for(var i = 0; i < a.length
 
 /* ---------- 共用 ---------- */
 function openModal(h){ $('modalBox').innerHTML = h; $('modal').classList.add('show'); }
-function closeModal(){ $('modal').classList.remove('show'); }
+function closeModal(){ $('modal').classList.remove('show'); if(VERIFY_MODE){ VERIFY_MODE = false; if(!gateOpen) $('entryGate').classList.remove('hidden'); } }
 var toastT;
 function toast(s){ var t = document.querySelector('.toast'); if(!t){ t = document.createElement('div'); t.className = 'toast'; document.body.appendChild(t); } t.textContent = s; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(function(){ t.hidden = true; }, 3000); }
 function download(blob, name){ var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 800); }
@@ -462,6 +463,7 @@ var ACT = {
     });
   },
   hist:function(){ openHist(); },
+  logout:function(){ closeModal(); gateLogout(); },
   verify:function(){ openVerify(null); },
   verifyGo:function(){ verifyGo(); },
   wipeAll:function(){ openModal('<h2>確定嗎？</h2><p>單位與課程設定、圖片、名單、我的範本、發證紀錄都會刪掉，無法復原（字體設定保留）。</p><div class="stack"><button class="btn red" data-act="wipeAllYes">清除全部資料</button><button class="btn alt" data-act="close">取消</button></div>'); },
@@ -535,6 +537,7 @@ function sec(id, title, val, body){ return '<details class="set-sec" data-sec="'
 function openSettings(){
   var h = '<div class="top"><h2 style="flex:1 1 0">⚙ 常用設定</h2><button class="btn alt" data-act="foldall">全部展開／收合</button></div>' +
     sec('view', '顯示', lsGet('fs') === 'xl' ? '大字' : '標準字', '<div class="stack"><button class="btn' + (lsGet('fs') === 'xl' ? ' alt' : '') + '" data-fontsize="m">標準字</button><button class="btn' + (lsGet('fs') === 'xl' ? '' : ' alt') + '" data-fontsize="xl">大字</button></div><p class="small">只影響操作畫面，不影響證書。</p>') +
+    sec('lic', '登入序號', gateOpen ? '已登入' : '', '<span id="licBadge" class="lic ' + gateInfo.cls + '">' + esc(gateInfo.text) + '</span><div><span id="headcountBadge" class="lic ' + gateInfo.hcls + '">' + esc(gateInfo.head) + '</span></div><div class="stack"><button class="btn alt" data-act="logout">登出</button></div><p class="small">登出後這台電腦要重新輸入序號；單位設定、範本、發證紀錄不會刪掉。</p>') +
     sec('tpl', '我的範本', TPLS.length + ' 個', '<p class="small">在「例 範例與我的範本」管理。</p>') +
     sec('hist', '發證紀錄', HIST.length + ' 批', '<div class="stack"><button class="btn alt" data-act="hist">🗂 打開發證紀錄</button></div>') +
     sec('privacy', '🔒 清除名單', ROSTER.length + ' 人', '<p class="small">只清掉學員名單（含個資），單位與課程設定保留。</p><div class="stack"><button class="btn red" data-act="wipeRoster">清除名單</button></div>') +
@@ -574,10 +577,117 @@ function initMarquee(){
 window.addEventListener('beforeinstallprompt', function(e){ e.preventDefault(); window._dp = e; });
 if('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('service-worker.js').catch(function(){});
 window.addEventListener('resize', function(){ if(!lsGet('zoom')) applyZoom(); });
-function checkHash(){ var m = location.hash.match(/^#v=([A-Za-z0-9_-]+)/); if(m){ var d = P.readPayload(m[1]); if(d) openVerify(d); else openModal('<h2>🔍 查驗證書</h2><div class="alert bad">讀不懂這個 QR code 的內容，可能不完整或被改過。</div><div class="stack"><button class="btn" data-act="close">關閉</button></div>'); return true; } return false; }
+function checkHash(){ var m = location.hash.match(/^#v=([A-Za-z0-9_-]+)/); if(m){ VERIFY_MODE = true; $('entryGate').classList.add('hidden'); var d = P.readPayload(m[1]); if(d) openVerify(d); else openModal('<h2>🔍 查驗證書</h2><div class="alert bad">讀不懂這個 QR code 的內容，可能不完整或被改過。</div><div class="stack"><button class="btn" data-act="close">關閉</button></div>'); return true; } return false; }
 window.addEventListener('hashchange', checkHash);
-applyView(); render(); initMarquee();
-if(!checkHash() && !lsGet('warnSeen')){ lsSet('warnSeen', '1'); showWarn(); }
-if(!saved) loadExample('tims');
-window._tcg = {get S(){ return S; }, get ROSTER(){ return ROSTER; }, get HIST(){ return HIST; }, ACT:ACT, items:items, loadExample:loadExample, setRoster:setRoster, get PENDING(){ return PENDING; }};
+/* ---------- 登入序號閘門（複製自 小工具/next-bus-helper）----------
+   序號在試算表「辦訓相關」的分頁「辦訓單位課程訓練證書」，由綁定的 Apps Script（gas/Code.js）驗證。
+   開啟時 fail-closed：驗證沒通過就整個工具都不能用。已登入後的背景重驗只有連線失敗或 server_error 不上鎖（正在排版列印不要被打斷），
+   序號過期、查無序號才上鎖。序號存 tcgEntrySerial（刻意不用 tcg. 前綴，⚙ 清除資料不會登出）。
+   例外：從證書 QR 進來的 #v= 查驗畫面不需要序號（拿證書的人沒有序號）。 */
+var LICENSE_CHECK_URL = 'https://script.google.com/macros/s/AKfycbw2qz-sTKRVkVHGQZLTj73xlJdDiaHG8eNexjAN9XWMrly5BnxVcP8dC0qE3kADHeIl/exec';
+var SERIAL_KEY = 'tcgEntrySerial', CLIENT_KEY = 'tcgEntryClientId', RECHECK_MS = 20 * 60 * 1000;
+function rawGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function rawSet(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
+function rawDel(k){ try{ localStorage.removeItem(k); }catch(e){} }
+var gateInfo = {cls:'', text:'尚未驗證', hcls:'', head:''};
+var REASON_LABEL = {
+  missing_serial:'請輸入登入序號',
+  serial_not_found:'查無此序號，請確認有沒有打錯',
+  expired:'這組序號已經過期了',
+  network_error:'連不上網路，請確認網路後再按一次確認',
+  server_error:'驗證暫時失敗，請等一下再試'
+};
+function clientId(){
+  var id = rawGet(CLIENT_KEY);
+  if(!id){ id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'c-' + Date.now() + '-' + Math.random().toString(36).slice(2); rawSet(CLIENT_KEY, id); }
+  return id;
+}
+function gateStatus(cls, text){
+  gateInfo.cls = cls; gateInfo.text = text;
+  var e = $('entryGateStatus'); e.className = 'lic ' + cls; e.textContent = text;
+  var b = $('licBadge'); if(b){ b.className = 'lic ' + cls; b.textContent = text; }
+}
+function gateHead(l){
+  var limited = l && typeof l.headcountLimit === 'number', free = l && l.valid && !limited, left = limited ? Math.max(l.headcountRemaining || 0, 0) : 0;
+  gateInfo.head = !l ? '' : free ? '此序號不限登入人數' : limited ? '此序號還可登入 ' + left + ' 人（上限 ' + l.headcountLimit + ' 人）' : '';
+  gateInfo.hcls = free || left > 0 ? 'ok' : 'bad';
+  var g = $('entryGateHeadcount'); g.textContent = l && l.reason === 'headcount_exceeded' ? gateInfo.head : '';
+  var b = $('headcountBadge'); if(b){ b.className = 'lic ' + gateInfo.hcls; b.textContent = gateInfo.head; }
+}
+function checkLicense(serial, attempt, renew){
+  attempt = attempt || 1;
+  if(!LICENSE_CHECK_URL) return Promise.reject(new Error('尚未設定授權伺服器'));
+  var ctl = window.AbortController ? new AbortController() : null, tm = ctl && setTimeout(function(){ ctl.abort(); }, 20000);
+  // Apps Script 不回應 OPTIONS 預檢，所以不設 Content-Type
+  return fetch(LICENSE_CHECK_URL, {method:'POST', body:JSON.stringify({serial:serial, clientId:clientId(), renew:!!renew}), signal:ctl ? ctl.signal : undefined}).catch(function(){
+    throw new Error(REASON_LABEL.network_error);
+  }).then(function(r){
+    clearTimeout(tm);
+    if(!r.ok) throw new Error(REASON_LABEL.server_error);
+    return r.text();
+  }).then(function(t){
+    var d; try{ d = JSON.parse(t); }catch(e){ d = null; }
+    if(!d || typeof d.valid !== 'boolean'){
+      if(attempt < 3) return checkLicense(serial, attempt + 1, renew);
+      throw new Error(REASON_LABEL.server_error);
+    }
+    return d;
+  });
+}
+function gateDays(l){
+  if(!l.expiresAt) return '序號有效';
+  return '序號有效，還可以用 ' + Math.max(Math.ceil((new Date(l.expiresAt) - new Date(Date.now())) / 86400000), 0) + ' 天';
+}
+function gateUnlock(l){
+  gateStatus('ok', '✓ ' + gateDays(l)); gateHead(l);
+  $('entryGate').classList.add('hidden');
+  var first = !gateOpen; gateOpen = true;
+  if(first){
+    if(!saved && !ROSTER.length) loadExample('tims');
+    if(!lsGet('warnSeen') && !VERIFY_MODE){ lsSet('warnSeen', '1'); showWarn(); }
+  }
+}
+function gateLock(text, l){
+  gateOpen = false;
+  gateStatus('bad', '✗ ' + text); gateHead(l && l.reason === 'headcount_exceeded' ? l : null);
+  if(!VERIFY_MODE){ closeModal(); $('entryGate').classList.remove('hidden'); }
+}
+function gateRun(serial, renew){
+  if(!serial){ gateLock(REASON_LABEL.missing_serial); return Promise.resolve(); }
+  return checkLicense(serial, 1, renew).then(function(l){
+    if(l.valid) gateUnlock(l);
+    else if(l.reason === 'server_error' && gateOpen) return;
+    else gateLock(REASON_LABEL[l.reason] || l.message || '序號驗證失敗', l);
+  }).catch(function(e){ if(!gateOpen) gateLock(e.message); });
+}
+function gateRenew(){ var s = rawGet(SERIAL_KEY); if(s && gateOpen) gateRun(s, true); }
+function gateRelease(serial){
+  if(!serial || !navigator.sendBeacon || !LICENSE_CHECK_URL) return;
+  try{ navigator.sendBeacon(LICENSE_CHECK_URL, new Blob([JSON.stringify({serial:serial, clientId:clientId(), release:true})], {type:'text/plain'})); }catch(e){}
+}
+function gateLogout(){
+  gateRelease(rawGet(SERIAL_KEY)); rawDel(SERIAL_KEY);
+  $('entryGateSerial').value = ''; gateLock('已登出，請輸入登入序號');
+}
+function initGate(){
+  var input = $('entryGateSerial'), btn = $('btnEntryGateConfirm');
+  btn.onclick = function(){ var s = input.value.trim(); rawSet(SERIAL_KEY, s); gateStatus('', '驗證中…'); gateRun(s, false); };
+  input.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); btn.click(); } });
+  function maskSerial(hide){ // 預設隱藏，免得旁人看到；要核對時才按顯示
+    var t = $('btnEntryGateToggle');
+    input.type = hide ? 'password' : 'text';
+    t.textContent = hide ? '👁 顯示' : '🙈 隱藏';
+    t.setAttribute('aria-pressed', String(!hide)); t.setAttribute('aria-label', hide ? '顯示序號' : '隱藏序號');
+  }
+  $('btnEntryGateToggle').onclick = function(){ maskSerial(input.type === 'text'); };
+  btn.addEventListener('click', function(){ maskSerial(true); });
+  input.value = rawGet(SERIAL_KEY) || '';
+  if(input.value){ gateStatus('', '驗證中…'); gateRun(input.value, false); }
+  setInterval(gateRenew, RECHECK_MS);
+  window.addEventListener('pagehide', function(){ gateRelease(rawGet(SERIAL_KEY)); }); // 送不出去也沒關係，後端 40 分鐘逾時兜底
+}
+
+applyView(); render(); initMarquee(); initGate();
+checkHash();
+window._tcg = {get gateOpen(){ return gateOpen; }, get S(){ return S; }, get ROSTER(){ return ROSTER; }, get HIST(){ return HIST; }, ACT:ACT, items:items, loadExample:loadExample, setRoster:setRoster, get PENDING(){ return PENDING; }};
 })();

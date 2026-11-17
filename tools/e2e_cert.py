@@ -7,6 +7,20 @@ BASE = os.environ.get('TCG_BASE', 'http://localhost:8889/')
 OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.environ.get('TEMP', '.'), 'tcg_e2e')
 os.makedirs(OUT, exist_ok=True)
 fails = []
+LIC = 'AKfycbw2qz-sTKRVkVHGQZLTj73xlJdDiaHG8eNexjAN9XWMrly5BnxVcP8dC0qE3kADHeIl'
+async def fake_license(route):
+    # 假的授權伺服器：GOOD 有效、OLD 過期、其他查無；release 回 ok
+    import json
+    body = json.loads(route.request.post_data or '{}')
+    if body.get('release'): r = {'ok': True}
+    elif body.get('serial') == 'GOOD': r = {'valid': True, 'reason': 'ok', 'expiresAt': '2099-01-01T00:00:00Z'}
+    elif body.get('serial') == 'OLD': r = {'valid': False, 'reason': 'expired'}
+    else: r = {'valid': False, 'reason': 'serial_not_found'}
+    await route.fulfill(status=200, content_type='application/json', body=json.dumps(r))
+async def login(pg, serial='GOOD'):
+    await pg.fill('#entryGateSerial', serial)
+    await pg.click('#btnEntryGateConfirm')
+    await pg.wait_for_timeout(400)
 def check(c, msg):
     print(('✓ ' if c else '✗ ') + msg)
     if not c: fails.append(msg)
@@ -18,9 +32,18 @@ async def main():
         errs = []
         pg.on('pageerror', lambda e: errs.append(str(e)))
         pg.on('console', lambda m: errs.append(m.text) if m.type == 'error' and 'visitor-badge' not in m.text and 'script.google' not in m.text else None)
+        await pg.route('**/' + LIC + '/exec', fake_license)
         await pg.goto(BASE)
         await pg.wait_for_function('window._tcg')
-        check(await pg.is_visible('#modal.show'), '首次開啟跳出使用警語')
+        check(await pg.is_visible('#entryGate') and not await pg.is_visible('#modal.show'), '沒登入：序號閘門擋住整個工具')
+        check(await pg.get_attribute('#entryGateSerial', 'type') == 'password', '序號輸入框預設遮住')
+        await login(pg, 'WRONG')
+        check(await pg.is_visible('#entryGate') and '查無此序號' in await pg.text_content('#entryGateStatus'), '錯的序號：仍擋住並顯示查無此序號')
+        await login(pg, 'OLD')
+        check(await pg.is_visible('#entryGate') and '過期' in await pg.text_content('#entryGateStatus'), '過期序號：仍擋住')
+        await login(pg, 'GOOD')
+        check(not await pg.is_visible('#entryGate') and await pg.evaluate('window._tcg.gateOpen'), '正確序號：解鎖')
+        check(await pg.is_visible('#modal.show'), '解鎖後首次跳出使用警語')
         await pg.click('#modal [data-act="close"]')
 
         # 範例一：5 人、3 人發證、背面科目表 → 6 頁（橫式）
@@ -95,6 +118,17 @@ async def main():
         url = await pg.evaluate('''async()=>{const f={no:"（115）示訓字第0001號",name:"測試甲",course:window._tcg.S.course.name,date:window._tcg.S.cert.date,hours:window._tcg.S.course.hours};const c=await TCG.verifyCode("DEMO",f);return location.pathname+"#v="+TCG.qrPayload(Object.assign({},f,{code:c,unit:"x",title:"y"}))}''')
         await pg.goto(BASE.rstrip('/') + url.replace('/index.html', '/') if url.startswith('/') else BASE + url)
         await pg.wait_for_selector('#vSecret')
+        # 另開一個「沒登入過」的瀏覽器：掃 QR 查驗不需要序號
+        ctx2 = await b.new_context()
+        q = await ctx2.new_page()
+        await q.route('**/' + LIC + '/exec', fake_license)
+        await q.goto(pg.url)
+        await q.wait_for_selector('#vSecret')
+        check(not await q.is_visible('#entryGate') and '王' not in '' and await q.is_visible('#modal.show'), '沒有序號的人掃 QR：直接看到查驗畫面')
+        await q.click('#modal [data-act="close"] >> nth=-1')
+        await q.wait_for_timeout(200)
+        check(await q.is_visible('#entryGate'), '關掉查驗畫面後：工具本身仍被序號擋住')
+        await ctx2.close()
         await pg.fill('#vSecret', 'DEMO')
         await pg.click('[data-act="verifyGo"]')
         await pg.wait_for_timeout(300)
@@ -105,12 +139,20 @@ async def main():
         # 名單預設不記住
         await pg.goto(BASE)
         await pg.wait_for_function('window._tcg')
+        await pg.wait_for_timeout(400)
+        check(not await pg.is_visible('#entryGate'), '重新整理：記住序號自動登入')
         check(await pg.evaluate('window._tcg.ROSTER.length') == 0, '重新整理後名單不保留（預設）')
+        await pg.evaluate("window._tcg.ACT.logout()")
+        await pg.wait_for_timeout(300)
+        check(await pg.is_visible('#entryGate') and await pg.evaluate("localStorage.getItem('tcgEntrySerial')") is None, '登出：回到閘門、序號清掉')
 
         # 手機寬度
         m = await b.new_page(viewport={'width': 375, 'height': 800})
+        await m.route('**/' + LIC + '/exec', fake_license)
         await m.goto(BASE)
         await m.wait_for_function('window._tcg')
+        await m.screenshot(path=os.path.join(OUT, 'gate-mobile.png'))
+        await login(m)
         await m.evaluate('window._tcg.loadExample("tims")')
         await m.wait_for_timeout(400)
         w = await m.evaluate('document.documentElement.scrollWidth')
