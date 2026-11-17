@@ -215,10 +215,10 @@ function refreshSoon(){ clearTimeout(rT); rT = setTimeout(function(){ renderShee
 /* ---------- 版面骨架 ---------- */
 function render(){
   $('app').innerHTML = '<div class="top noprint"><h1><span class="sealmini" aria-hidden="true"><span>證</span><span>訓</span><span>書</span><span>結</span></span>訓練證書產生器 <small>辦訓單位的結訓證書・研習證明</small></h1>' +
-    '<button class="ibtn" data-act="hist">🗂 發證紀錄</button><button class="ibtn" data-act="verify">🔍 查驗證書</button><a class="ibtn" href="manual.html">📖 操作手冊</a><button class="ibtn" data-act="settings" aria-label="常用設定">⚙</button></div>' +
+    '<button class="ibtn lictop" id="licTop" data-act="settings" hidden></button><button class="ibtn" data-act="hist">🗂 發證紀錄</button><button class="ibtn" data-act="verify">🔍 查驗證書</button><a class="ibtn" href="manual.html">📖 操作手冊</a><button class="ibtn" data-act="settings" aria-label="常用設定">⚙</button></div>' +
     '<p class="warn-line noprint">發證門檻請依各計畫最新規定；名單只在這台電腦處理、不上傳。<button data-act="warn">⚠ 使用警語</button></p>' +
     '<div class="work"><div class="panel noprint" id="panel"></div><div class="pv"><div class="pvbar noprint" id="pvbar"></div><div id="sheetsWrap"><div id="sheets"></div></div></div></div>' + footer();
-  renderPanel(); renderSheets(); applyZoom();
+  renderPanel(); renderSheets(); applyZoom(); showLicTop();
 }
 function footer(){
   return '<footer class="foot noprint">👤 創作者 Mark Tsai（蔡豐全）<a href="mailto:tsaimark@gmail.com">tsaimark@gmail.com</a><br><a href="manual.html">📖 操作手冊</a><a href="#" data-act="warn">⚠ 使用警語</a>' +
@@ -537,7 +537,7 @@ function sec(id, title, val, body){ return '<details class="set-sec" data-sec="'
 function openSettings(){
   var h = '<div class="top"><h2 style="flex:1 1 0">⚙ 常用設定</h2><button class="btn alt" data-act="foldall">全部展開／收合</button></div>' +
     sec('view', '顯示', lsGet('fs') === 'xl' ? '大字' : '標準字', '<div class="stack"><button class="btn' + (lsGet('fs') === 'xl' ? ' alt' : '') + '" data-fontsize="m">標準字</button><button class="btn' + (lsGet('fs') === 'xl' ? '' : ' alt') + '" data-fontsize="xl">大字</button></div><p class="small">只影響操作畫面，不影響證書。</p>') +
-    sec('lic', '登入序號', gateOpen ? '已登入' : '', '<span id="licBadge" class="lic ' + gateInfo.cls + '">' + esc(gateInfo.text) + '</span><div><span id="headcountBadge" class="lic ' + gateInfo.hcls + '">' + esc(gateInfo.head) + '</span></div><div class="stack"><button class="btn alt" data-act="logout">登出</button></div><p class="small">登出後這台電腦要重新輸入序號；單位設定、範本、發證紀錄不會刪掉。</p>') +
+    sec('lic', '登入序號', gateOpen ? (gateExp(LICINFO) ? '到期日 ' + expText(gateExp(LICINFO)) : '已登入') : '', '<span id="licBadge" class="lic ' + gateInfo.cls + '">' + esc(gateInfo.text) + '</span><div><span id="headcountBadge" class="lic ' + gateInfo.hcls + '">' + esc(gateInfo.head) + '</span></div><div class="stack"><button class="btn alt" data-act="logout">登出</button></div><p class="small">登出後這台電腦要重新輸入序號；單位設定、範本、發證紀錄不會刪掉。</p>') +
     sec('tpl', '我的範本', TPLS.length + ' 個', '<p class="small">在「例 範例與我的範本」管理。</p>') +
     sec('hist', '發證紀錄', HIST.length + ' 批', '<div class="stack"><button class="btn alt" data-act="hist">🗂 打開發證紀錄</button></div>') +
     sec('privacy', '🔒 清除名單', ROSTER.length + ' 人', '<p class="small">只清掉學員名單（含個資），單位與課程設定保留。</p><div class="stack"><button class="btn red" data-act="wipeRoster">清除名單</button></div>') +
@@ -634,21 +634,39 @@ function checkLicense(serial, attempt, renew){
     return d;
   });
 }
+// 到期日：後端回傳結束日期當天 00:00（台北）的 ISO，當天結束前都有效。用瀏覽器本地日期顯示、算剩幾天。
+function gateExp(l){
+  if(!l || !l.expiresAt) return null;
+  var e = new Date(l.expiresAt); if(isNaN(e)) return null;
+  var end = new Date(e.getFullYear(), e.getMonth(), e.getDate()), t = new Date(Date.now()), today = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+  return {y:end.getFullYear(), m:end.getMonth() + 1, d:end.getDate(), left:Math.max(Math.round((end - today) / 86400000), 0)};
+}
+function expText(x){ return x.y + '/' + x.m + '/' + x.d; }
 function gateDays(l){
-  if(!l.expiresAt) return '序號有效';
-  return '序號有效，還可以用 ' + Math.max(Math.ceil((new Date(l.expiresAt) - new Date(Date.now())) / 86400000), 0) + ' 天';
+  var x = gateExp(l); if(!x) return '序號有效';
+  return '序號有效，可以用到 ' + expText(x) + '（還有 ' + x.left + ' 天）';
+}
+var LICINFO = null;
+function showLicTop(){
+  var el = $('licTop'); if(!el) return;
+  var x = gateExp(LICINFO);
+  el.hidden = !gateOpen || !LICINFO;
+  if(el.hidden) return;
+  el.className = 'ibtn lictop' + (x && x.left <= 14 ? ' soon' : '');
+  el.innerHTML = x ? '🔑 序號到期日 <b>' + expText(x) + '</b><small>（還有 ' + x.left + ' 天）</small>' : '🔑 序號有效';
+  el.title = '登入序號的使用期限' + (typeof LICINFO.headcountLimit === 'number' ? '；此序號同時最多 ' + LICINFO.headcountLimit + ' 人登入' : '') + '。點一下看詳細';
 }
 function gateUnlock(l){
-  gateStatus('ok', '✓ ' + gateDays(l)); gateHead(l);
+  LICINFO = l; gateStatus('ok', '✓ ' + gateDays(l)); gateHead(l);
   $('entryGate').classList.add('hidden'); document.body.classList.remove('verify-only');
-  var first = !gateOpen; gateOpen = true;
+  var first = !gateOpen; gateOpen = true; showLicTop();
   if(first){
     if(!saved && !ROSTER.length) loadExample('tims');
     if(!lsGet('warnSeen') && !VERIFY_MODE){ lsSet('warnSeen', '1'); showWarn(); }
   }
 }
 function gateLock(text, l){
-  gateOpen = false;
+  gateOpen = false; LICINFO = null; showLicTop();
   gateStatus('bad', '✗ ' + text); gateHead(l && l.reason === 'headcount_exceeded' ? l : null);
   if(!VERIFY_MODE){ closeModal(); $('entryGate').classList.remove('hidden'); }
 }

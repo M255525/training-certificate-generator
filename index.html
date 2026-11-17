@@ -24,6 +24,7 @@
 html{font-size:16px;-webkit-text-size-adjust:100%}
 html[data-fs="xl"]{font-size:19px}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 body{margin:0;min-height:100vh;background:var(--desk);color:var(--ink);font-family:var(--hei);font-weight:500;line-height:1.55;padding-top:var(--mq);
   background-image:radial-gradient(circle at 20% 0,rgba(201,162,39,.10),transparent 40%),linear-gradient(135deg,rgba(255,255,255,.025) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.025) 50%,rgba(255,255,255,.025) 75%,transparent 75%);background-size:auto,14px 14px}
 body.has-marquee{--mq:34px}
@@ -47,6 +48,11 @@ h1,h2,h3{line-height:1.3;margin:0;font-weight:900}
 @media (max-width:560px){.top h1{font-size:1.2rem;flex-basis:100%}.top h1 small{display:none}}
 .ibtn{min-height:2.6rem;padding:0 .8rem;border:1px solid rgba(255,255,255,.28);border-radius:.6rem;background:rgba(255,255,255,.07);font-weight:700;font-size:.9rem;text-decoration:none;color:#fff;display:inline-flex;align-items:center;gap:.3rem}
 .ibtn:hover{background:rgba(255,255,255,.15)}
+.lictop{border-color:rgba(201,162,39,.7);background:rgba(201,162,39,.16);color:#F3DE9A}
+.lictop b{color:#fff;margin-left:.15rem}
+.lictop small{font-size:.75rem;color:#E4D6A6;margin-left:.1rem}
+.lictop.soon{border-color:#E0483E;background:rgba(224,72,62,.2);color:#FFD2CC}
+@media (max-width:560px){.lictop small{display:none}}
 .warn-line{margin:.35rem 0 0;font-size:.8rem;color:#C9D3DE}
 .warn-line button{background:none;border:0;padding:0;color:#F3DE9A;font-weight:700;text-decoration:underline;font-size:inherit}
 
@@ -257,7 +263,7 @@ body:has(#entryGate:not(.hidden)){overflow:hidden}
   <div class="gate-box">
     <div class="gseal" aria-hidden="true"><span>證</span><span>訓</span><span>書</span><span>結</span></div>
     <h2 id="gateTitle">訓練證書產生器</h2>
-    <p class="gate-desc">請輸入登入序號，再按「確認」。這台電腦會記住，之後不用再輸入。序號自第一次驗證起可以用 12 個月。</p>
+    <p class="gate-desc">請輸入登入序號，再按「確認」。這台電腦會記住，之後不用再輸入。登入後畫面上方會顯示序號的到期日。</p>
     <div class="gate-row">
       <input type="password" id="entryGateSerial" placeholder="請輸入登入序號" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="登入序號">
       <button class="btn alt" type="button" id="btnEntryGateToggle" aria-pressed="false" aria-label="顯示序號">👁 顯示</button>

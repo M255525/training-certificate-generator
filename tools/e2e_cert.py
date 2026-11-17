@@ -44,6 +44,9 @@ async def main():
         await login(pg, 'GOOD')
         check(not await pg.is_visible('#entryGate') and await pg.evaluate('window._tcg.gateOpen'), '正確序號：解鎖')
         check(await pg.is_visible('#modal.show'), '解鎖後首次跳出使用警語')
+        lt = await pg.text_content('#licTop')
+        check(await pg.is_visible('#licTop') and '2099/1/1' in lt and '天' in lt, '登入後上方顯示序號到期日 ' + lt.strip())
+        check('2099/1/1' in await pg.text_content('#entryGateStatus'), '登入狀態文字含到期日')
         await pg.click('#modal [data-act="close"]')
 
         # 範例一：5 人、3 人發證、背面科目表 → 6 頁（橫式）
@@ -155,6 +158,7 @@ async def main():
         await pg.evaluate("window._tcg.ACT.logout()")
         await pg.wait_for_timeout(300)
         check(await pg.is_visible('#entryGate') and await pg.evaluate("localStorage.getItem('tcgEntrySerial')") is None, '登出：回到閘門、序號清掉')
+        check(not await pg.is_visible('#licTop'), '登出：到期日標示消失')
 
         # 手機寬度
         m = await b.new_page(viewport={'width': 375, 'height': 800})

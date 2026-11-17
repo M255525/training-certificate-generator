@@ -8,6 +8,7 @@
 - 序號表：試算表「辦訓相關」（`1oXn9S2SjupP0o9eJrV-4c0f8o_Cs_ejL9CGCIBGT-LE`）分頁 **「辦訓單位課程訓練證書」**，表頭比對「序號／開始日期／結束日期」，12 個月；選填「人數限制」「目前登入人數」，「已登入裝置」自動維護。`SHEET_NAME` 固定，分頁不存在回 server_error，不退回第一個分頁。
 - 後端 `gas/Code.js`（複製自 `小工具/next-bus-helper/gas/Code.js`，只改 SHEET_NAME）＋`gas/appsscript.json`，綁定腳本 scriptId `1WwyRuuCJB6-OmTkQ-ZFrOTFuXLBUMgVyy0RuFrTwqwux_CfE5slIBV5A`（`gas/.clasp.json` 不進版控）。改後端：`cd gas && clasp push --force && clasp deploy -i AKfycbw2qz-sTKRVkVHGQZLTj73xlJdDiaHG8eNexjAN9XWMrly5BnxVcP8dC0qE3kADHeIl`（更新既有部署，網址不變）。
 - 前端：`#entryGate` 全螢幕擋住整個工具（列印時隱藏）。開啟時 fail-closed；已登入後背景重驗（每 20 分鐘）只有連線失敗或 server_error 不上鎖，過期或查無序號才上鎖。localStorage `tcgEntrySerial`／`tcgEntryClientId`，刻意不用 `tcg.` 前綴，⚙「清除全部資料」不會登出；登出在 ⚙「登入序號」。序號輸入框預設遮住。
+- 登入後上方常駐 `#licTop`「🔑 序號到期日 yyyy/m/d（還有 N 天）」（`gateExp()` 用後端 expiresAt 的本地日期；剩 14 天內 `.soon` 變紅；點了開 ⚙），⚙「登入序號」與閘門狀態文字也寫到期日（2026-11-17 使用者要求）。期限以試算表該列「結束日期」為準，各序號可不同（例：免費序號 `FLf9M6zAX8pe` 到 2027/5/17、上限 10 人，使用者自己加在試算表）。頁面有 `[hidden]{display:none!important}`。
 - **例外：`#v=` 查驗畫面不需要序號**（拿證書的學員、用人單位沒有序號）；關掉查驗畫面後若沒登入就回到閘門（`VERIFY_MODE`）。
 - 首訪警語與載入範例改在第一次解鎖後才做（`gateUnlock`）。
 - ⚠ 純前端閘門，懂 DevTools 的人可移除遮罩，這是已知取捨（同交通出門助手）。
@@ -37,7 +38,7 @@
 - 測試掛鉤 `window._tcg`（gateOpen、S、ROSTER、HIST、ACT、items、loadExample、setRoster、PENDING）。
 
 ## 驗證
-- `python tools/e2e_cert.py [輸出資料夾]`（先開 8889）：首訪警語、範例一 6 頁（3 證書＋3 背面）、字號連號、QR／驗證碼、本文不壓落款、`page.pdf()` 6 頁橫式 A4、清冊直式＋遮罩＋未發證原因、三範例張數、Excel 名單匯入（含 Excel 日期序號）、確認發證後流水號、`#v=` 查驗相符＋比對紀錄、名單不保留、375px 無溢出、無 console 錯誤；序號閘門用 `page.route` 假造授權回應（GOOD／OLD／其他）測擋住、錯序號、過期、解鎖、自動登入、登出、沒序號的人掃 QR 可查驗。2026-11-17 全過（32 項，含只印文字）；PDF 轉圖目視過。
+- `python tools/e2e_cert.py [輸出資料夾]`（先開 8889）：首訪警語、範例一 6 頁（3 證書＋3 背面）、字號連號、QR／驗證碼、本文不壓落款、`page.pdf()` 6 頁橫式 A4、清冊直式＋遮罩＋未發證原因、三範例張數、Excel 名單匯入（含 Excel 日期序號）、確認發證後流水號、`#v=` 查驗相符＋比對紀錄、名單不保留、375px 無溢出、無 console 錯誤；序號閘門用 `page.route` 假造授權回應（GOOD／OLD／其他）測擋住、錯序號、過期、解鎖、自動登入、登出、沒序號的人掃 QR 可查驗。2026-11-17 全過（35 項，含只印文字、到期日標示）；PDF 轉圖目視過。
 - `python tools/e2e_qr.py`（預設測線上版＋真實序號 mark0131；本機設 `TCG_BASE=http://localhost:8889/`）：登入→列印 PDF→第一頁轉 300dpi→用 jsQR（jsdelivr）從**整頁**找 QR，依序降到 150／120／100dpi→沒登入的手機打開解出的網址→查驗內容、無身分證、驗證碼一致、正確／錯誤密語、竄改姓名抓得到。2026-11-17：300／150／120dpi 掃得到、100dpi 掃不到。
 - **實體印表機、證書紙、雙面背面對齊未實測；QR 也還沒用真手機掃過紙本**；楷書在非 Windows 用 LXGW WenKai TC（Google Fonts）。
 
