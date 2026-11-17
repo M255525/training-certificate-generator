@@ -586,6 +586,8 @@ window.addEventListener('hashchange', checkHash);
    例外：從證書 QR 進來的 #v= 查驗畫面不需要序號（拿證書的人沒有序號）。 */
 var LICENSE_CHECK_URL = 'https://script.google.com/macros/s/AKfycbw2qz-sTKRVkVHGQZLTj73xlJdDiaHG8eNexjAN9XWMrly5BnxVcP8dC0qE3kADHeIl/exec';
 var SERIAL_KEY = 'tcgEntrySerial', CLIENT_KEY = 'tcgEntryClientId', RECHECK_MS = 20 * 60 * 1000;
+// 公開在登入頁的免費試用序號（使用者 2026-11-17 指定；試算表那一列：到 2027/5/17、人數上限 10）。停用時改成 '' 就不顯示。
+var FREE_SERIAL = 'FLf9M6zAX8pe';
 function rawGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
 function rawSet(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
 function rawDel(k){ try{ localStorage.removeItem(k); }catch(e){} }
@@ -690,6 +692,15 @@ function gateLogout(){
 function initGate(){
   var input = $('entryGateSerial'), btn = $('btnEntryGateConfirm');
   btn.onclick = function(){ var s = input.value.trim(); rawSet(SERIAL_KEY, s); gateStatus('', '驗證中…'); gateRun(s, false); };
+  if(FREE_SERIAL){
+    $('gateFreeCode').textContent = FREE_SERIAL;
+    $('btnGateFree').onclick = function(){ input.value = FREE_SERIAL; btn.click(); };
+    $('btnGateFreeCopy').onclick = function(){
+      var b = this, done = function(){ b.textContent = '已複製 ✓'; setTimeout(function(){ b.textContent = '複製序號'; }, 1800); };
+      var fb = function(){ var t = document.createElement('textarea'); t.value = FREE_SERIAL; document.body.appendChild(t); t.select(); try{ document.execCommand('copy'); }catch(e){} t.remove(); done(); };
+      if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(FREE_SERIAL).then(done, fb); else fb();
+    };
+  } else $('gateFree').hidden = true;
   input.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); btn.click(); } });
   function maskSerial(hide){ // 預設隱藏，免得旁人看到；要核對時才按顯示
     var t = $('btnEntryGateToggle');
