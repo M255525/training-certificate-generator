@@ -5,7 +5,7 @@
 2026-11-17 建立。使用者只說「要可以生成辦訓單位的課程訓練證書」，規格由 Claude 自行決定。**2026-11-17 已上線** <https://m255525.github.io/training-certificate-generator/>（repo 由使用者自己 `gh repo create`；先開 Pages 再推，`github-pages` 環境要補 master 分支許可）。
 
 ## 登入序號閘門（2026-11-17，複製自交通出門助手）
-- 序號表：試算表「辦訓相關」（`1oXn9S2SjupP0o9eJrV-4c0f8o_Cs_ejL9CGCIBGT-LE`）分頁 **「辦訓單位課程訓練證書」**，表頭比對「序號／開始日期／結束日期」，12 個月；選填「人數限制」「目前登入人數」，「已登入裝置」自動維護。`SHEET_NAME` 固定，分頁不存在回 server_error，不退回第一個分頁。
+- 序號表：試算表「辦訓相關」（`1oXn9S2SjupP0o9eJrV-4c0f8o_Cs_ejL9CGCIBGT-LE`）分頁 **「辦訓單位課程訓練證書」**，表頭比對「序號／開始日期／結束日期」，12 個月；選填「人數限制」「目前登入人數」，「已登入裝置」自動維護。`SHEET_NAME` 固定，分頁不存在回 server_error，不退回第一個分頁。**同一支部署也給課程招生海報產生器用**（它的請求帶 `sheet:'課程招生海報產生器'` 查另一個分頁，2026-11-17 起），改後端或換部署網址要一起顧到那邊的 `LICENSE_CHECK_URL`。
 - 後端 `gas/Code.js`（複製自 `小工具/next-bus-helper/gas/Code.js`，只改 SHEET_NAME）＋`gas/appsscript.json`，綁定腳本 scriptId `1WwyRuuCJB6-OmTkQ-ZFrOTFuXLBUMgVyy0RuFrTwqwux_CfE5slIBV5A`（`gas/.clasp.json` 不進版控）。改後端：`cd gas && clasp push --force && clasp deploy -i AKfycbw2qz-sTKRVkVHGQZLTj73xlJdDiaHG8eNexjAN9XWMrly5BnxVcP8dC0qE3kADHeIl`（更新既有部署，網址不變）。
 - 前端：`#entryGate` 全螢幕擋住整個工具（列印時隱藏）。開啟時 fail-closed；已登入後背景重驗（每 20 分鐘）只有連線失敗或 server_error 不上鎖，過期或查無序號才上鎖。localStorage `tcgEntrySerial`／`tcgEntryClientId`，刻意不用 `tcg.` 前綴，⚙「清除全部資料」不會登出；登出在 ⚙「登入序號」。序號輸入框預設遮住。
 - 登入後上方常駐 `#licTop`「🔑 序號到期日 yyyy/m/d（還有 N 天）」（`gateExp()` 用後端 expiresAt 的本地日期；剩 14 天內 `.soon` 變紅；點了開 ⚙），⚙「登入序號」與閘門狀態文字也寫到期日（2026-11-17 使用者要求）。期限以試算表該列「結束日期」為準，各序號可不同（例：免費序號 `FLf9M6zAX8pe` 到 2027/5/17、上限 10 人，使用者自己加在試算表）。頁面有 `[hidden]{display:none!important}`。
