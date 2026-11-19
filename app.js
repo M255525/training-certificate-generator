@@ -421,8 +421,8 @@ function mkAsk(id){
   var d = MK.store.get(id); if(!d){ toast('找不到這個課程專案'); return; }
   MKPICK = id;
   var att = d.results['attendance-qr'];
-  openModal('<h2>📥 帶入「' + esc(d.course.title) + '」</h2><p>會換掉：課程名稱、班別、開結訓日期、訓練總時數、地點' + (d.course.org ? '、單位名稱' : '') + '，以及<b>整份學員名單（' + d.students.length + ' 人）</b>。證書版型、本文、字號設定不動。</p>' +
-    (att ? '<p class="small">出席時數：來自出席簽到 QR（' + esc(MKCourse.when({updated:att.updated})) + ' 更新，應到 ' + esc(att.planned) + ' 小時）。</p>' : '<div class="alert warn">這個課程專案還沒有出席時數。帶入後出席欄是空白，<b>空白會當作全勤</b>，請自己補上或先到出席簽到 QR 存一次。</div>') +
+  openModal('<h2>📥 帶入「' + esc(d.course.title) + '」</h2><p>會換掉：課程名稱、班別、開結訓日期、訓練總時數、地點' + (d.course.org ? '、單位名稱' : '') + '' + (d.students.length ? '，以及<b>整份學員名單（' + d.students.length + ' 人）</b>' : '。課程專案還沒有學員名單，<b>目前名單保留</b>') + '。證書版型、本文、字號設定不動。</p>' +
+    (!d.students.length ? '' : att ? '<p class="small">出席時數：來自出席簽到 QR（' + esc(MKCourse.when({updated:att.updated})) + ' 更新，應到 ' + esc(att.planned) + ' 小時）。</p>' : '<div class="alert warn">這個課程專案還沒有出席時數。帶入後出席欄是空白，<b>空白會當作全勤</b>，請自己補上或先到出席簽到 QR 存一次。</div>') +
     '<div class="go"><button class="btn" data-act="mkOk">帶入</button><button class="btn alt" data-act="close">取消</button></div>');
 }
 function mkApply(){
@@ -433,6 +433,7 @@ function mkApply(){
   if(c.org) S.unit.name = c.org;
   S.mk = d.id;
   closeModal(); save();
+  if(!d.students.length){ renderPanel(); renderSheets(); toast('已帶入課程資料（課程專案還沒有名單，目前名單保留）'); return; }
   setRoster(d.students.map(function(s){ var k = MKCourse.studentKey(s); return {sid:s.sid || '', name:s.name, ename:s.ename || '', id:s.idNo || '', birth:s.birth || '', att:hrs[k] != null ? String(hrs[k]) : '', score:s.score != null ? String(s.score) : '', note:'', include:true}; }));
 }
 function mkMarkIssued(list){
