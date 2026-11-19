@@ -419,7 +419,8 @@ function createCloud(o){
 function mountCloudUI(cloud, opts){
   opts = opts || {};
   var doc = root.document; if(!doc) return;
-  var wantId = (/(?:^|[#&])mkcloud=([A-Za-z0-9_-]{4,40})/.exec(root.location.hash) || [])[1] || '';
+  // 網址要用 course-link 剛載入時記下的（有些工具一啟動就改寫網址，例如同儕互評換成 ?c=）
+  var wantId = (/(?:^|[#&])mkcloud=([A-Za-z0-9_-]{4,40})/.exec(opts.hash != null ? opts.hash : root.location.hash) || [])[1] || '';
   var css = '.mkc-pill{position:fixed;left:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:2147483000;font:600 13px/1.2 system-ui,"Noto Sans TC",sans-serif;background:#1f2a44;color:#fff;border:0;border-radius:999px;padding:8px 14px;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer}'
     + '.mkc-pill.err{background:#b3261e}.mkc-pill.off{background:#5b6475}'
     + '.mkc-back{position:fixed;inset:0;z-index:2147483001;background:rgba(10,15,30,.55);display:flex;align-items:center;justify-content:center;padding:16px}'
@@ -515,9 +516,10 @@ API.mergeDocs = mergeDocs; API.createCloud = createCloud; API.memKeystore = memK
 try{
   if(API.store && root.document && typeof fetch === 'function' && typeof indexedDB !== 'undefined'){
     var local = /^(localhost|127\.0\.0\.1)$/.test(root.location.hostname);
+    var bootHash = root.location.hash;
     API.cloud = createCloud({store:API.store, storage:localStorage, keystore:idbKeystore(), fetch:function(u, o){ return fetch(u, o); },
       api:function(){ var o = null; try{ o = local && localStorage.getItem('mk.cloud.api'); }catch(e){} return o || root.MK_CLOUD_API || DEFAULT_API; }});
-    var boot = function(){ API.cloudUI = mountCloudUI(API.cloud, {store:API.store, noPill:!!root.MK_CLOUD_NO_PILL}); };
+    var boot = function(){ API.cloudUI = mountCloudUI(API.cloud, {store:API.store, noPill:!!root.MK_CLOUD_NO_PILL, hash:bootHash}); };
     if(root.document.readyState === 'loading') root.document.addEventListener('DOMContentLoaded', boot); else boot();
   }
 }catch(e){}
