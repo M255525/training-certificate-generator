@@ -38,6 +38,11 @@
 - 印章：程式產生（示意）／上傳圖檔／留用印處／不印；負責人小章 3 字加「印」、2 字加「之印」，inline 放在姓名後。
 - 測試掛鉤 `window._tcg`（gateOpen、S、ROSTER、HIST、ACT、items、loadExample、setRoster、PENDING）。
 
+## 課程專案（2026-11-19，`course-link.js` 是 `課程平台/course-link/` 正本的複製檔，別直接改）
+- 名單區「📥 從課程專案帶入」→ 選課程 → `mkAsk` 說明會換掉哪些欄位（沒有出席結果時警告空白＝全勤）→ `mkApply` 填 `S.course`、`S.unit.name`、名單（`att`＝出席簽到 QR 的時數，roster 列多帶 `sid`）；`S.mk` 記連結（`merge` 的保留清單有 `mk`）。`#mkFile` 開課程專案檔。
+- 「確認發證」後 `mkMarkIssued` 把字號寫到 `results['training-certificate'].issued`。
+- 封鎖網站資料時按鈕不出現。跨工具測試在 `課程平台/course-link/tools/e2e_link.py`。service-worker activate 改成只刪自己前綴的舊版快取（v8）。
+
 ## 驗證
 - `python tools/e2e_cert.py [輸出資料夾]`（先開 8889）：首訪警語、範例一 6 頁（3 證書＋3 背面）、字號連號、QR／驗證碼、本文不壓落款、`page.pdf()` 6 頁橫式 A4、清冊直式＋遮罩＋未發證原因、三範例張數、Excel 名單匯入（含 Excel 日期序號）、確認發證後流水號、`#v=` 查驗相符＋比對紀錄、名單不保留、375px 無溢出、無 console 錯誤；序號閘門用 `page.route` 假造授權回應（GOOD／OLD／其他）測擋住、錯序號、過期、解鎖、自動登入、登出、沒序號的人掃 QR 可查驗。2026-11-17 全過（37 項，含只印文字、到期日標示、免費序號）；PDF 轉圖目視過。
 - `python tools/e2e_qr.py`（預設測線上版＋真實序號 mark0131；本機設 `TCG_BASE=http://localhost:8889/`）：登入→列印 PDF→第一頁轉 300dpi→用 jsQR（jsdelivr）從**整頁**找 QR，依序降到 150／120／100dpi→沒登入的手機打開解出的網址→查驗內容、無身分證、驗證碼一致、正確／錯誤密語、竄改姓名抓得到。2026-11-17：300／150／120dpi 掃得到、100dpi 掃不到。

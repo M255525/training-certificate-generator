@@ -16,7 +16,7 @@ function today(){ var d = new Date(); return d.getFullYear() + '-' + String(d.ge
 function merge(saved){
   var D = P.clone(P.DEF), o = saved || {};
   ['unit', 'course', 'cert', 'rule', 'fmt'].forEach(function(k){ D[k] = Object.assign(D[k], o[k] || {}); });
-  ['style', 'orient', 'color', 'view', 'keepRoster', 'src'].forEach(function(k){ if(o[k] != null) D[k] = o[k]; });
+  ['style', 'orient', 'color', 'view', 'keepRoster', 'src', 'mk'].forEach(function(k){ if(o[k] != null) D[k] = o[k]; });
   D.open = Object.assign({ex:true, unit:true, course:false, cert:false, roster:true, look:true}, o.open || {});
   if(!P.STYLES[D.style]) D.style = 'classic';
   if(!D.cert.date) D.cert.date = today();
@@ -303,7 +303,7 @@ function renderPanel(){
   h += card('roster', '四', '學員名單', s.roster,
     '<p class="small">從 Excel 複製整個表格貼上（第一列是標題最好）：<b>姓名、英文姓名、身分證字號、出生日期、出席時數、成績、備註</b>，只有姓名是必填。出席時數空白＝全勤。</p>' +
     '<label class="fld">貼上名單<textarea id="rText" rows="6" spellcheck="false" placeholder="姓名\t身分證字號\t出席時數\t成績">' + esc(ROSTER.length ? P.rosterToText(ROSTER) : '') + '</textarea></label>' +
-    '<div class="go"><button class="btn" data-act="applyRoster">✔ 套用名單</button><label class="btn alt" style="cursor:pointer">⬆ 開啟 Excel／CSV<input type="file" id="rFile" accept=".xlsx,.csv,.txt,.tsv" hidden></label><button class="btn alt sm" data-act="rosterTpl">⬇ 名單範本 .xlsx</button><button class="btn alt sm" data-act="clearRoster">🗑 清空</button></div>' +
+    '<div class="go"><button class="btn" data-act="applyRoster">✔ 套用名單</button><label class="btn alt" style="cursor:pointer">⬆ 開啟 Excel／CSV<input type="file" id="rFile" accept=".xlsx,.csv,.txt,.tsv" hidden></label>' + (MK ? '<button class="btn alt" data-act="mkPick">📥 從課程專案帶入</button>' : '') + '<button class="btn alt sm" data-act="rosterTpl">⬇ 名單範本 .xlsx</button><button class="btn alt sm" data-act="clearRoster">🗑 清空</button></div>' +
     chk('keepRoster', '在這台電腦記住名單（公用電腦不要勾）', true) +
     (ROSTER.length ? '<div class="stat"><span>共 ' + ROSTER.length + ' 人</span><span class="g">發證 ' + okN + ' 人</span>' + (noN ? '<span class="r">未達條件 ' + noN + ' 人</span>' : '') + (badId ? '<span class="r">身分證檢查碼錯 ' + badId + ' 人</span>' : '') + '</div>' +
       '<div class="tw"><table class="rs"><tr><th>發</th><th>姓名</th><th>身分證</th><th>出席</th><th>成績</th><th>狀態</th><th>字號</th></tr>' + rows + '</table></div>' +
@@ -348,6 +348,7 @@ document.addEventListener('change', function(e){
   if(t.dataset && t.dataset.inc != null){ ROSTER[+t.dataset.inc].include = t.checked; save(); renderPanel(); renderSheets(); return; }
   if(t.dataset && t.dataset.img){ readImg(t.files[0], t.dataset.img); return; }
   if(t.id === 'rFile' && t.files[0]){ IO.readFile(t.files[0]).then(function(d){ setRoster(P.rowsToRoster(d.rows)); }).catch(function(err){ toast('⚠ ' + err.message); }); return; }
+  if(t.id === 'mkFile' && t.files[0]){ var mf = new FileReader(); mf.onload = function(){ t.value = ''; var r = MKCourse.fromText(mf.result); if(r.error){ toast('⚠ ' + r.error); return; } var last = null; r.docs.forEach(function(x){ last = MK.store.put(x) || last; }); if(!last){ toast('⚠ 存不進這台電腦（瀏覽器空間不足或封鎖網站資料）'); return; } if(r.docs.length === 1) mkAsk(last.id); else openModal(mkPickHtml()); }; mf.readAsText(t.files[0]); return; }
   if(t.id === 'projFile' && t.files[0]){ var fr = new FileReader(); fr.onload = function(){ try{ var o = JSON.parse(fr.result); if(o.app !== 'training-certificate-generator') throw new Error('不是本工具的設定檔'); applyData(o.data || {}); if(Array.isArray(o.roster)) setRoster(o.roster.map(function(r){ return Object.assign({include:true}, r); })); toast('已開啟設定檔'); }catch(err){ toast('⚠ ' + err.message); } }; fr.readAsText(t.files[0]); }
 });
 document.addEventListener('focusin', function(e){ if(e.target.id === 'tBody' || e.target.id === 'tEn') lastTa = e.target.id; });
@@ -407,6 +408,39 @@ function loadExample(id){
     rule:{ratio:pl.ratio, needScore:pl.needScore, pass:pl.pass, result:pl.result}, fmt:Object.assign({}, S.fmt, {showEn:id === 'tims', subj:id === 'tims' ? 'back' : 'none', qr:true}), style:e.style, orient:'auto', color:'', src:id};
   applyData(d); setRoster(P.parseRosterText(e.roster));
 }
+/* ---------- 課程專案（course-link.js；沒有也照常運作） ---------- */
+var MK = window.MKCourse && window.MKCourse.store ? window.MKCourse : null;
+function mkPickHtml(){
+  var list = MK.store.list();
+  return '<h2>📥 從課程專案帶入</h2><p class="small">課程專案是同一台電腦上各辦訓工具共用的課程與名單。出席簽到 QR 按「📤 存到課程專案」後，這裡就能帶入名單、身分證字號和每個人的出席時數。</p>' +
+    (list.length ? '<div class="go" style="flex-direction:column;align-items:stretch">' + list.map(function(d){ return '<button class="btn alt" data-act="mkIn" data-id="' + esc(d.id) + '">' + esc(MKCourse.label(d)) + ' <small>' + esc(MKCourse.when(d)) + (S.mk === d.id ? '・目前連結' : '') + '</small></button>'; }).join('') + '</div>' : '<p>這台電腦還沒有課程專案。</p>') +
+    '<div class="go"><label class="btn alt" style="cursor:pointer">📂 開啟課程專案檔（.json）<input type="file" id="mkFile" accept=".json,application/json" hidden></label><button class="btn alt" data-act="close">取消</button></div>';
+}
+var MKPICK = null;
+function mkAsk(id){
+  var d = MK.store.get(id); if(!d){ toast('找不到這個課程專案'); return; }
+  MKPICK = id;
+  var att = d.results['attendance-qr'];
+  openModal('<h2>📥 帶入「' + esc(d.course.title) + '」</h2><p>會換掉：課程名稱、班別、開結訓日期、訓練總時數、地點' + (d.course.org ? '、單位名稱' : '') + '，以及<b>整份學員名單（' + d.students.length + ' 人）</b>。證書版型、本文、字號設定不動。</p>' +
+    (att ? '<p class="small">出席時數：來自出席簽到 QR（' + esc(MKCourse.when({updated:att.updated})) + ' 更新，應到 ' + esc(att.planned) + ' 小時）。</p>' : '<div class="alert warn">這個課程專案還沒有出席時數。帶入後出席欄是空白，<b>空白會當作全勤</b>，請自己補上或先到出席簽到 QR 存一次。</div>') +
+    '<div class="go"><button class="btn" data-act="mkOk">帶入</button><button class="btn alt" data-act="close">取消</button></div>');
+}
+function mkApply(){
+  var d = MK.store.get(MKPICK); if(!d){ closeModal(); return; }
+  var c = d.course, att = d.results['attendance-qr'], hrs = att && att.hours || {};
+  ['name', 'term', 'start', 'end', 'place'].forEach(function(k){ var v = c[k === 'name' ? 'title' : k]; if(v) S.course[k] = v; });
+  if(c.hours !== '') S.course.hours = String(c.hours);
+  if(c.org) S.unit.name = c.org;
+  S.mk = d.id;
+  closeModal(); save();
+  setRoster(d.students.map(function(s){ var k = MKCourse.studentKey(s); return {sid:s.sid || '', name:s.name, ename:s.ename || '', id:s.idNo || '', birth:s.birth || '', att:hrs[k] != null ? String(hrs[k]) : '', score:s.score != null ? String(s.score) : '', note:'', include:true}; }));
+}
+function mkMarkIssued(list){
+  if(!MK || !S.mk || !MK.store.get(S.mk)) return;
+  var old = (MK.store.get(S.mk).results['training-certificate'] || {}).issued || {}, issued = Object.assign({}, old);
+  list.forEach(function(x){ issued[MKCourse.studentKey({sid:x.r.sid, name:x.r.name})] = {no:x.no, date:S.cert.date}; });
+  MK.store.save(S.mk, {result:{issued:issued}}, 'training-certificate');
+}
 function tplData(){ return {unit:S.unit, course:S.course, cert:S.cert, rule:S.rule, fmt:S.fmt, style:S.style, orient:S.orient, color:S.color}; }
 
 var ACT = {
@@ -459,10 +493,14 @@ var ACT = {
       HIST.unshift({t:Date.now(), unit:S.unit.name, title:S.cert.title, course:S.course.name, term:S.course.term, start:S.course.start, end:S.course.end, hours:S.course.hours, date:S.cert.date,
         rows:list.map(function(x, i){ return {no:x.no, name:x.r.name, id:P.maskId(x.r.id, 'mask'), code:codes[i]}; })});
       HIST = HIST.slice(0, 200); lsSet('hist', JSON.stringify(HIST));
+      mkMarkIssued(list);
       S.cert.next = +S.cert.next + list.length; save(); closeModal(); renderPanel(); renderSheets(); toast('已記錄 ' + list.length + ' 張，下一號從 ' + S.cert.next + ' 開始');
     });
   },
   hist:function(){ openHist(); },
+  mkPick:function(){ openModal(mkPickHtml()); },
+  mkIn:function(t){ mkAsk(t.dataset.id); },
+  mkOk:function(){ mkApply(); },
   logout:function(){ closeModal(); gateLogout(); },
   verify:function(){ openVerify(null); },
   verifyGo:function(){ verifyGo(); },
