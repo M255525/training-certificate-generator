@@ -158,7 +158,7 @@ function when(doc){ var d = new Date(doc && doc.updated); return isFinite(d) ? (
  * 本機課程庫是雲端的鏡像：store 有變動就上傳；載入、回到分頁、恢復連線時下載。兩邊都改過時用 mergeDocs 合併。
  * ====================================================================== */
 var CLOUD_STATE = 'mk.cloud.v1', KEYCHECK_TEXT = 'mk-course-keycheck', REMEMBER_MS = 30 * 86400000, SESSION_MS = 12 * 3600000;
-var DEFAULT_API = ''; // 正式 Worker 網址部署後填入；本機測試可在 localhost 用 localStorage 'mk.cloud.api' 覆寫
+var DEFAULT_API = 'https://training-ops-api.content-workflow.workers.dev'; // 辦訓管理平台正式 Worker（2026-11-19 部署）；本機測試可在 localhost 用 localStorage 'mk.cloud.api' 覆寫
 
 function u8b64(u8){ var s = ''; for(var i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]); return (typeof btoa === 'function' ? btoa(s) : Buffer.from(s, 'binary').toString('base64')).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
 function b64u8(s){ s = String(s).replace(/-/g, '+').replace(/_/g, '/'); var b = typeof atob === 'function' ? atob(s) : Buffer.from(s, 'base64').toString('binary'), u = new Uint8Array(b.length); for(var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
