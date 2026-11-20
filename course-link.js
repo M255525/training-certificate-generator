@@ -6,7 +6,7 @@
  */
 (function(root){
 'use strict';
-var VERSION = '1.1.0';
+var VERSION = '1.2.0';
 var SCHEMA = 'mk-course/1', LIB_SCHEMA = 'mk-course-lib/1', KEY = 'mk.course.v1', MAX_COURSES = 30, MAX_STUDENTS = 1000;
 
 function isObj(o){ return !!o && typeof o === 'object' && !Array.isArray(o); }
@@ -213,9 +213,35 @@ function idbKeystore(){
 }
 function memKeystore(){ var v = null; return {get:function(){ return Promise.resolve(v); }, set:function(x){ v = x; return Promise.resolve(); }, clear:function(){ v = null; return Promise.resolve(); }}; }
 
+// 帳號（v1.2）：主帳號＝序號＋單位密語；次帳號（最多 3 個）＝序號＋帳號代號＋自己的密碼。
+// 單位金鑰＝PBKDF2(單位密語, salt) 的 256 位元（與 v1.1 的 deriveKey 相同，舊資料照樣解得開）。
+// 驗證碼（proof）＝PBKDF2(密語或密碼, 'mk-auth|'+salt)，和金鑰是兩回事；伺服器只存它的 HMAC，用來確認身分。
+// 次帳號的密碼（或一次性邀請碼）包住單位金鑰（wrapped），只有驗證通過才拿得到。
+var INVITE_ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function pbkdf2Bits(pass, salt, iter, label){
+  var c = subtle(), te = new TextEncoder(), sb = b64u8(salt), s = sb;
+  if(label){ var l = te.encode(label); s = new Uint8Array(l.length + sb.length); s.set(l); s.set(sb, l.length); }
+  return c.subtle.importKey('raw', te.encode(String(pass).normalize('NFC')), 'PBKDF2', false, ['deriveBits']).then(function(base){
+    return c.subtle.deriveBits({name:'PBKDF2', salt:s, iterations:iter || 310000, hash:'SHA-256'}, base, 256);
+  }).then(function(b){ return new Uint8Array(b); });
+}
+function aesKey(raw){ return subtle().subtle.importKey('raw', raw, {name:'AES-GCM'}, false, ['encrypt', 'decrypt']); }
+function authProof(pass, salt, iter){ return pbkdf2Bits(pass, salt, iter, 'mk-auth|').then(u8b64); }
+function wrapRaw(kek, raw){ return encryptJSON(kek, u8b64(raw)); }
+function unwrapRaw(kek, blob){ return decryptJSON(kek, blob).then(b64u8); }
+function inviteCode(){ var b = subtle().getRandomValues(new Uint8Array(10)), s = ''; for(var i = 0; i < 10; i++) s += INVITE_ABC[b[i] % INVITE_ABC.length]; return s.slice(0, 5) + '-' + s.slice(5); }
+function normCode(s){ return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+// 產生一組邀請：隨機邀請碼包住單位金鑰
+function makeInvite(raw){
+  var code = inviteCode(), c = normCode(code), salt = randSalt(), out = {code:code, inviteSalt:salt};
+  return deriveKey(c, salt).then(function(kek){ return wrapRaw(kek, raw); }).then(function(w){ out.inviteWrapped = w; return authProof(c, salt); })
+    .then(function(p){ out.inviteProof = p; return out; });
+}
+var ALL_PERMS = {edit:true, create:true, del:true, audit:true, exportId:true};
+
 function createCloud(o){
   var store = o.store, storage = o.storage, keystore = o.keystore, doFetch = o.fetch, now = o.now || function(){ return Date.now(); };
-  var key = null, timers = {}, busy = null, listeners = [], last = {error:'', syncedAt:0}, pendingSerial = '', cloud;
+  var key = null, timers = {}, busy = null, listeners = [], last = {error:'', syncedAt:0}, pending = null, myName = '', cloud;
   function api(){ return typeof o.api === 'function' ? o.api() : o.api; }
   function st(){ try{ var s = JSON.parse(storage.getItem(CLOUD_STATE)); return isObj(s) ? s : {}; }catch(e){ return {}; } }
   function save(s){ try{ storage.setItem(CLOUD_STATE, JSON.stringify(s)); }catch(e){} }
@@ -229,6 +255,7 @@ function createCloud(o){
     if(token) h.Authorization = 'Bearer ' + token;
     return doFetch(api() + '/api', {method:'POST', headers:h, body:JSON.stringify({action:action, payload:payload || {}})}).then(function(r){ return r.json(); }, function(){ throw new Error('連不上雲端，請確認網路'); });
   }
+  function must(r){ if(!r.ok){ var e = new Error(r.message || '雲端回應錯誤'); e.code = r.code; throw e; } return r; }
   function authed(action, payload){
     var s = st();
     if(!s.token && !s.serial) return Promise.reject(new Error('請先登入雲端'));
@@ -238,23 +265,68 @@ function createCloud(o){
       return relogin().then(function(){ return call(action, payload, st().token); });
     });
   }
-  // token 過期：有記住序號就靜默重新登入（金鑰還在才行），否則要使用者重新登入
+  function dropKey(){ key = null; myName = ''; return keystore.clear(); }
+  // token 過期：勾了「記住」的話用記下的驗證碼靜默重新登入，否則要使用者重新登入
   function relogin(){
     var s = st();
-    if(!s.serial){ patchSt({token:''}); key = null; keystore.clear(); return Promise.reject(new Error('雲端登入已過期，請重新登入')); }
-    return call('auth.login', {serial:s.serial, clientId:s.clientId}).then(function(r){
-      if(!r.ok){ patchSt({token:''}); throw new Error(r.message || '雲端登入已過期'); }
-      if(r.org.keycheck !== s.keycheck){ key = null; keystore.clear(); patchSt({token:'', serial:'', keycheck:r.org.keycheck, salt:r.org.salt}); throw new Error('單位密語已經更換，請重新登入'); }
-      patchSt({token:r.token, exp:r.exp, licenseExpiresAt:r.licenseExpiresAt || ''});
+    var fail = function(msg){ patchSt({token:'', serial:''}); dropKey(); emit(); throw new Error(msg); };
+    if(!s.serial) return keystore.get().then(function(){ return fail('雲端登入已過期，請重新登入'); });
+    return keystore.get().then(function(k){
+      if(!k || !k.proof) return fail('雲端登入已過期，請重新登入');
+      return call('auth.begin', {serial:s.serial, clientId:s.clientId}).then(function(b){
+        if(!b.ok) return fail(b.message || '雲端登入已過期');
+        return call('auth.login', {serial:s.serial, ticket:b.ticket, proof:k.proof, member:k.member || ''}).then(function(r){
+          if(!r.ok) return fail(r.code === 'PASS' ? '密語或密碼已經更換，請重新登入' : r.message || '雲端登入已過期');
+          if(r.org.keycheck !== s.keycheck) return fail('單位密語已經更換，請重新登入');
+          patchSt({token:r.token, exp:r.exp, licenseExpiresAt:r.licenseExpiresAt || '', perms:r.perms || null, scope:r.scope || 'all'});
+        });
+      });
     });
   }
   function loadKey(){
     if(key) return Promise.resolve(key);
     return keystore.get().then(function(k){
-      if(k && k.key && k.exp > now() && k.keycheck === st().keycheck){ key = k.key; return key; }
+      if(k && k.key && k.exp > now() && k.keycheck === st().keycheck){ key = k.key; return nameOf(st().nameBlob).then(function(n){ myName = n; return key; }); }
       if(k) keystore.clear();
       return null;
     });
+  }
+  function nameOf(blob){ return blob && key ? decryptJSON(key, blob).then(String, function(){ return ''; }) : Promise.resolve(''); }
+  function checkKey(k, kc){ return decryptJSON(k, kc).catch(function(){ return null; }).then(function(t){ if(t !== KEYCHECK_TEXT) throw new Error('解不開單位資料，請向主帳號確認'); return k; }); }
+  function who(role, member){ return role === 'main' ? 'main' : 'm:' + member; }
+  // 不能看到的課程（或換了身分）：把這台電腦上從雲端下載來的課程拿掉（雲端還在，不會遺失）
+  function dropSynced(keep){
+    var v = vers(), out = {};
+    Object.keys(v).forEach(function(id){
+      if(v[id].skip || keep && keep(id)){ out[id] = v[id]; return; }
+      if(store.get(id)) store.silently(function(){ store.remove(id); });
+    });
+    patchSt({vers:out});
+  }
+  function applyScope(scope){ if(Array.isArray(scope)) dropSynced(function(id){ return scope.indexOf(id) >= 0; }); }
+  // 登入完成：記下身分、金鑰，然後同步
+  function finish(r, k, proof, opts){
+    var s = st(), w = who(r.role, r.member);
+    if(s.keycheck && r.org.keycheck !== s.keycheck) save({clientId:s.clientId}); // 換了單位或換了密語：舊的同步紀錄作廢
+    else if(s.who && s.who !== w) { dropSynced(); patchSt({since:0}); }          // 同一台電腦換了身分：別人的課程不留
+    key = k;
+    var exp = opts.remember ? now() + REMEMBER_MS : Math.min(now() + SESSION_MS, r.exp || now() + SESSION_MS);
+    var v = vers();
+    if(opts.upload === false) store.list().forEach(function(d){ if(!v[d.id]) v[d.id] = {skip:true}; });
+    patchSt({clientId:st().clientId || s.clientId, token:r.token, exp:r.exp, keycheck:r.org.keycheck, salt:r.org.salt || st().salt, iter:r.org.iter || st().iter || 310000,
+      licenseExpiresAt:r.licenseExpiresAt || '', role:r.role, member:r.member || '', who:w, perms:r.perms || null, scope:r.scope || 'all', nameBlob:r.name || '',
+      serial:opts.remember ? pending.serial : '', vers:v});
+    pending = null;
+    if(r.role !== 'main') applyScope(r.scope);
+    return nameOf(r.name).then(function(n){ myName = n; return keystore.set({key:k, exp:exp, keycheck:r.org.keycheck, proof:proof, member:r.member || ''}); }).then(function(){ return cloud.sync(); });
+  }
+  // 主帳號再輸入一次單位密語：管理次帳號、換密語前確認，並拿到可以包給次帳號的原始金鑰
+  function verifyPass(pass){
+    var s = st();
+    if(s.role !== 'main') return Promise.reject(new Error('只有主帳號可以做這件事'));
+    var raw;
+    return pbkdf2Bits(pass, s.salt, s.iter).then(function(b){ raw = b; return aesKey(b); }).then(function(k){ return checkKey(k, s.keycheck); })
+      .then(function(){ return raw; }, function(){ throw new Error('單位密語不正確'); });
   }
 
   function pushNow(id, tries){
@@ -265,6 +337,7 @@ function createCloud(o){
       return authed('courses.put', {id:id, baseVer:v && v.ver || 0, blob:blob});
     }).then(function(r){
       if(r.ok){ setVer(id, {ver:r.ver, synced:doc.updated}); return; }
+      if(r.code === 'FORBIDDEN'){ setVer(id, {ver:v && v.ver || 0, synced:doc.updated}); throw new Error(r.message + '（這台電腦上的修改沒有上傳）'); }
       if(r.code !== 'CONFLICT' || tries >= 3) throw new Error(r.message || '上傳失敗');
       var cur = r.current;
       if(!cur){ setVer(id, null); return pushNow(id, tries + 1); }
@@ -281,6 +354,7 @@ function createCloud(o){
     var v = vers()[id];
     if(!v || v.skip || !v.ver){ setVer(id, null); return Promise.resolve(); }
     return authed('courses.delete', {id:id, baseVer:v.ver}).then(function(r){
+      if(r.code === 'FORBIDDEN'){ setVer(id, null); patchSt({since:0}); throw new Error(r.message + '（下次同步會把課程放回來）'); }
       if(r.ok || !r.current || r.current.deleted){ setVer(id, null); return; }
       // 雲端在這期間被別人改過：不刪，改成下載回來（以免誤刪別人的新資料）
       return decryptJSON(key, r.current.blob).then(function(remote){ remote = norm(remote); store.silently(function(){ store.put(remote); }); setVer(id, {ver:r.current.ver, synced:remote.updated}); });
@@ -307,6 +381,11 @@ function createCloud(o){
   function syncNow(){
     return authed('courses.pull', {since:st().since || 0}).then(function(r){
       if(!r.ok) throw new Error(r.message || '下載失敗');
+      if(st().role && st().role !== 'main'){
+        var changed = JSON.stringify(r.scope || 'all') !== JSON.stringify(st().scope || 'all');
+        patchSt({perms:r.perms || null, scope:r.scope || 'all'}); applyScope(r.scope);
+        if(changed && (st().since || 0) > 0){ patchSt({since:0}); return syncNow(); } // 可看範圍變了：從頭重抓（新開放的課不會出現在「之後有變動」裡）
+      }
       return r.courses.reduce(function(p, c){ return p.then(function(acc){ return applyRemote(c).then(function(id){ if(id) acc.push(id); return acc; }); }); }, Promise.resolve([])).then(function(again){
         patchSt({since:r.now});
         var v = vers(), dirty = store.list().filter(function(d){ var x = v[d.id]; return !x || !x.skip && d.updated !== x.synced; }).map(function(d){ return d.id; });
@@ -339,76 +418,129 @@ function createCloud(o){
   cloud = {
     enabled:function(){ return !!(api() && subtle() && store); },
     loggedIn:function(){ return !!key; },
-    status:function(){ var s = st(); return {enabled:cloud.enabled(), loggedIn:!!key, pending:Object.keys(timers).length > 0 || !!busy, error:last.error, syncedAt:last.syncedAt, remember:!!s.serial, licenseExpiresAt:s.licenseExpiresAt || ''}; },
+    status:function(){ var s = st(); return {enabled:cloud.enabled(), loggedIn:!!key, pending:Object.keys(timers).length > 0 || !!busy, error:last.error, syncedAt:last.syncedAt, remember:!!s.serial, licenseExpiresAt:s.licenseExpiresAt || '',
+      role:key ? s.role || 'main' : '', member:key ? s.member || '' : '', name:key ? myName : ''}; },
+    // 目前身分與權限。主帳號全部都可以；次帳號看主帳號設定的 perms（伺服器也會檢查）
+    me:function(){ var s = st(); if(!key) return null; var main = (s.role || 'main') === 'main'; return {role:main ? 'main' : 'member', member:s.member || '', name:myName, perms:main ? Object.assign({}, ALL_PERMS) : Object.assign({edit:false, create:false, del:false, audit:false, exportId:false}, s.perms || {}), scope:main ? 'all' : s.scope || 'all'}; },
+    can:function(p){ var m = cloud.me(); return !!(m && m.perms[p]); },
     on:function(f){ listeners.push(f); },
-    // 第一步：驗序號。回傳 {isNew}：單位第一次使用要設定密語
+    // 第一步：驗序號。回傳 {isNew, members}：新單位要設定密語；members＝目前有幾個次帳號
     check:function(serial){
       serial = String(serial || '').trim();
       if(!serial) return Promise.reject(new Error('請輸入序號'));
       var s = st(), cid = s.clientId || 'mk-' + randSalt();
-      return call('auth.login', {serial:serial, clientId:cid}).then(function(r){
-        if(!r.ok) throw new Error(r.message || '登入失敗');
-        pendingSerial = serial;
-        if(s.keycheck && r.org.keycheck !== s.keycheck) save({clientId:cid}); // 換了單位或換了密語：舊的同步紀錄作廢
-        patchSt({clientId:cid, token:r.token, exp:r.exp, salt:r.org.salt, iter:r.org.iter, keycheck:r.org.keycheck || '', licenseExpiresAt:r.licenseExpiresAt || '', serial:''});
-        return {isNew:!r.org.keycheck};
+      if(!s.clientId) patchSt({clientId:cid});
+      return call('auth.begin', {serial:serial, clientId:cid}).then(must).then(function(r){
+        pending = {serial:serial, ticket:r.ticket, org:r.org, members:r.members || 0};
+        return {isNew:!!r.org.isNew, members:r.members || 0};
       });
     },
-    // 第二步：輸入密語（新單位＝設定）。opts {remember, upload}：upload=false 時這台電腦上原有、還沒上過雲端的課程不上傳
+    // 第二步（主帳號）：輸入單位密語（新單位＝設定）。opts {remember, upload}
     unlock:function(pass, opts){
       opts = opts || {};
-      var s = st();
-      if(!s.token) return Promise.reject(new Error('請先輸入序號'));
+      var P = pending;
+      if(!P) return Promise.reject(new Error('請先輸入序號'));
       if(String(pass || '').length < 8) return Promise.reject(new Error('單位密語至少 8 個字'));
-      return deriveKey(pass, s.salt, s.iter).then(function(k){
-        if(s.keycheck){
-          return decryptJSON(k, s.keycheck).catch(function(){ return null; }).then(function(t){ if(t !== KEYCHECK_TEXT) throw new Error('單位密語不正確'); return k; });
-        }
-        return encryptJSON(k, KEYCHECK_TEXT).then(function(kc){
-          return authed('org.init', {keycheck:kc}).then(function(r){ if(!r.ok) throw new Error(r.message || '設定密語失敗'); patchSt({keycheck:kc}); return k; });
-        });
-      }).then(function(k){
-        key = k;
-        var exp = opts.remember ? now() + REMEMBER_MS : Math.min(now() + SESSION_MS, st().exp || now() + SESSION_MS);
-        var v = vers();
-        if(opts.upload === false) store.list().forEach(function(d){ if(!v[d.id]) v[d.id] = {skip:true}; });
-        patchSt({serial:opts.remember ? pendingSerial : '', vers:v});
-        pendingSerial = '';
-        return keystore.set({key:k, exp:exp, keycheck:st().keycheck});
-      }).then(function(){ return cloud.sync(); });
+      var k, proof, kc;
+      return pbkdf2Bits(pass, P.org.salt, P.org.iter).then(aesKey).then(function(x){
+        k = x;
+        if(P.org.keycheck) return decryptJSON(k, P.org.keycheck).catch(function(){ return null; }).then(function(t){ if(t !== KEYCHECK_TEXT) throw new Error('單位密語不正確'); });
+        if(P.org.isNew) return encryptJSON(k, KEYCHECK_TEXT).then(function(x){ kc = x; });
+      }).then(function(){ return authProof(pass, P.org.salt, P.org.iter); }).then(function(p){
+        proof = p;
+        return call('auth.login', {serial:P.serial, ticket:P.ticket, proof:proof, keycheck:kc});
+      }).then(must).then(function(r){ return checkKey(k, r.org.keycheck).then(function(){ return finish(r, k, proof, opts); }); });
+    },
+    // 次帳號：先查帳號狀態（invited＝第一次，要輸入邀請碼並設定自己的密碼）
+    memberInfo:function(member){
+      var P = pending; member = normCode(member);
+      if(!P) return Promise.reject(new Error('請先輸入序號'));
+      return call('auth.member', {serial:P.serial, ticket:P.ticket, member:member}).then(must).then(function(r){ P.member = {id:member, status:r.status, salt:r.salt, iter:r.iter}; return {status:r.status}; });
+    },
+    // 次帳號登入。secret＝自己的密碼；第一次是邀請碼，並用 opts.newPass 設定自己的密碼
+    unlockMember:function(secret, opts){
+      opts = Object.assign({upload:false}, opts); // 次帳號預設不上傳這台電腦原本的課程
+      var P = pending, M = P && P.member, k, raw;
+      if(!M) return Promise.reject(new Error('請先輸入帳號代號'));
+      var invited = M.status === 'invited', sec = invited ? normCode(secret) : String(secret || '');
+      if(invited && String(opts.newPass || '').length < 8) return Promise.reject(new Error('自己的密碼至少 8 個字'));
+      var login = function(proof){ return call('auth.login', {serial:P.serial, ticket:P.ticket, proof:proof, member:M.id}).then(must); }, proof0;
+      return authProof(sec, M.salt, M.iter).then(function(p){ proof0 = p; return login(p); }).then(function(r){
+        return deriveKey(sec, M.salt, M.iter).then(function(kek){ return unwrapRaw(kek, r.wrapped); }).then(function(b){ raw = b; return aesKey(b); })
+          .then(function(x){ k = x; return checkKey(k, r.org.keycheck); }).then(function(){
+            if(!invited) return finish(r, k, proof0, opts);
+            // 第一次：用自己的新密碼重新包住單位金鑰，邀請碼作廢
+            var salt = randSalt(), out = {salt:salt}, np;
+            return deriveKey(opts.newPass, salt).then(function(kek){ return wrapRaw(kek, raw); }).then(function(w){ out.wrapped = w; return authProof(opts.newPass, salt); })
+              .then(function(p){ np = p; out.proof = p; return call('member.activate', out, r.token).then(must); })
+              .then(function(){ return login(np); }).then(function(r2){ return finish(r2, k, np, opts); });
+          });
+      });
     },
     sync:function(){ return guarded(syncNow); },
     // 這台電腦上沒上傳的課程（登入時選了不上傳的）之後想上傳
     include:function(id){ var v = vers()[id]; if(v && v.skip) setVer(id, null); return cloud.sync(); },
     isLocalOnly:function(id){ var v = vers()[id]; return !!(v && v.skip); },
     logout:function(){
-      var s = st(); key = null; pendingSerial = '';
+      var s = st(); pending = null;
       Object.keys(timers).forEach(function(id){ clearTimeout(timers[id]); delete timers[id]; });
       if(s.token) call('auth.logout', {}, s.token).catch(function(){});
-      save({clientId:s.clientId});
-      return keystore.clear().then(emit);
+      save({clientId:s.clientId, who:s.who, keycheck:s.keycheck, vers:s.vers, since:s.since}); // 留著同步紀錄：下次換人登入時才知道哪些課程是從雲端來的、要拿掉
+      return dropKey().then(emit);
     },
-    // 換單位密語：下載全部、用新金鑰重新加密、整批送出（期間有人改過會失敗，要重來）
+    // 換單位密語（主帳號）：下載全部、用新金鑰重新加密、整批送出；次帳號全部要用新邀請碼重新啟用。回傳 {invites:[{id, name, code}]}
     rekey:function(oldPass, newPass){
-      var s = st(), oldKey, newKey, salt = randSalt(), kc;
+      var s = st(), oldKey, newKey, newRaw, salt = randSalt(), kc, proof, invites = [];
       if(String(newPass || '').length < 8) return Promise.reject(new Error('新密語至少 8 個字'));
-      return deriveKey(oldPass, s.salt, s.iter).then(function(k){ oldKey = k; return decryptJSON(k, s.keycheck); }).then(function(t){ if(t !== KEYCHECK_TEXT) throw 0; }).catch(function(){ throw new Error('目前的密語不正確'); })
-        .then(function(){ return deriveKey(newPass, salt, s.iter); }).then(function(k){ newKey = k; return encryptJSON(k, KEYCHECK_TEXT); }).then(function(x){ kc = x; return authed('courses.pull', {since:0}); })
+      return verifyPass(oldPass).then(aesKey).then(function(k){ oldKey = k; return pbkdf2Bits(newPass, salt, s.iter); })
+        .then(function(b){ newRaw = b; return aesKey(b); }).then(function(k){ newKey = k; return encryptJSON(k, KEYCHECK_TEXT); })
+        .then(function(x){ kc = x; return authProof(newPass, salt, s.iter); }).then(function(p){ proof = p; return authed('members.list', {}); }).then(must)
         .then(function(r){
-          if(!r.ok) throw new Error(r.message);
-          return Promise.all(r.courses.filter(function(c){ return !c.deleted; }).map(function(c){
-            return decryptJSON(oldKey, c.blob).then(function(d){ return encryptJSON(newKey, d); }).then(function(blob){ return {id:c.id, baseVer:c.ver, blob:blob}; });
+          return Promise.all(r.members.map(function(m){
+            var name;
+            return decryptJSON(oldKey, m.name).catch(function(){ return ''; }).then(function(n){ name = String(n); return encryptJSON(newKey, name); })
+              .then(function(nb){ return makeInvite(newRaw).then(function(inv){ invites.push({id:m.id, name:name, code:m.status === 'disabled' ? '' : inv.code}); return {id:m.id, name:nb, inviteSalt:inv.inviteSalt, inviteWrapped:inv.inviteWrapped, inviteProof:inv.inviteProof}; }); });
           }));
-        }).then(function(list){ return authed('org.rekey', {oldKeycheck:s.keycheck, keycheck:kc, salt:salt, courses:list}); })
-        .then(function(r){
-          if(!r.ok) throw new Error(r.message || '換密語失敗');
+        }).then(function(mems){
+          return authed('courses.pull', {since:0}).then(must).then(function(r){
+            return Promise.all(r.courses.filter(function(c){ return !c.deleted; }).map(function(c){
+              return decryptJSON(oldKey, c.blob).then(function(d){ return encryptJSON(newKey, d); }).then(function(blob){ return {id:c.id, baseVer:c.ver, blob:blob}; });
+            }));
+          }).then(function(list){ return authed('org.rekey', {oldKeycheck:s.keycheck, keycheck:kc, salt:salt, proof:proof, courses:list, members:mems}); });
+        }).then(function(r){
+          must(r);
           key = newKey;
           var v = vers(); Object.keys(v).forEach(function(id){ if(v[id].ver) v[id].ver++; });
           patchSt({keycheck:kc, salt:salt, vers:v});
-          return keystore.get().then(function(old){ return keystore.set({key:newKey, exp:old && old.exp || now() + SESSION_MS, keycheck:kc}); });
-        }).then(function(){ return cloud.sync(); });
+          return keystore.get().then(function(old){ return keystore.set({key:newKey, exp:old && old.exp || now() + SESSION_MS, keycheck:kc, proof:proof, member:''}); });
+        }).then(function(){ return cloud.sync(); }).then(function(){ return {invites:invites}; });
     },
-    audit:function(){ return authed('audit.list', {}).then(function(r){ if(!r.ok) throw new Error(r.message); return r.items; }); },
+    audit:function(){ return authed('audit.list', {}).then(must).then(function(r){ return r.items; }); },
+    // ---- 次帳號管理（主帳號）。名字用單位金鑰加密後才上傳 ----
+    members:function(){
+      return authed('members.list', {}).then(must).then(function(r){
+        return Promise.all(r.members.map(function(m){ return nameOf(m.name).then(function(n){ m.name = n; return m; }); })).then(function(list){ return {members:list, max:r.max}; });
+      });
+    },
+    addMember:function(pass, name, perms, scope){
+      name = String(name || '').trim().slice(0, 40);
+      if(!name) return Promise.reject(new Error('請幫次帳號取個名字'));
+      var inv;
+      return verifyPass(pass).then(makeInvite).then(function(x){ inv = x; return encryptJSON(key, name); })
+        .then(function(nb){ return authed('members.create', {name:nb, perms:perms || {}, scope:scope || 'all', inviteSalt:inv.inviteSalt, inviteWrapped:inv.inviteWrapped, inviteProof:inv.inviteProof}); })
+        .then(must).then(function(r){ return {id:r.id, code:inv.code}; });
+    },
+    updateMember:function(id, patch){
+      patch = Object.assign({}, patch);
+      var go = patch.name != null ? encryptJSON(key, String(patch.name).trim().slice(0, 40)).then(function(nb){ patch.name = nb; }) : Promise.resolve();
+      return go.then(function(){ return authed('members.update', Object.assign({id:id}, patch)); }).then(must);
+    },
+    reinviteMember:function(pass, id){
+      var inv;
+      return verifyPass(pass).then(makeInvite).then(function(x){ inv = x; return authed('members.reinvite', {id:id, inviteSalt:x.inviteSalt, inviteWrapped:x.inviteWrapped, inviteProof:x.inviteProof}); })
+        .then(must).then(function(){ return {id:id, code:inv.code}; });
+    },
+    removeMember:function(id){ return authed('members.delete', {id:id}).then(must); },
     // 啟動：這台電腦有有效金鑰就同步
     start:function(){ return loadKey().then(function(k){ emit(); if(k) return cloud.sync(); }); }
   };
@@ -428,6 +560,7 @@ function mountCloudUI(cloud, opts){
     + '.mkc-box h3{margin:0 0 8px;font-size:18px}.mkc-box label{display:block;margin:10px 0 4px;font-weight:600}.mkc-box input[type=password],.mkc-box input[type=text]{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #c5cad6;border-radius:8px;font:inherit}'
     + '.mkc-box .chk{display:flex;gap:8px;align-items:flex-start;font-weight:400;margin-top:10px}.mkc-box .chk input{margin-top:5px}'
     + '.mkc-box .row{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}.mkc-box button{font:inherit;padding:8px 16px;border-radius:8px;border:1px solid #c5cad6;background:#fff;cursor:pointer}.mkc-box button.pri{background:#1f2a44;color:#fff;border-color:#1f2a44}'
+    + '.mkc-who{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 2px}.mkc-who label{display:flex;gap:6px;align-items:center;margin:0;font-weight:600;border:1px solid #c5cad6;border-radius:8px;padding:6px 10px;cursor:pointer}.mkc-who label:has(input:checked){border-color:#1f2a44;background:#eef1f7}'
     + '.mkc-box .msg{color:#b3261e;min-height:1.4em;margin-top:8px}.mkc-box .note{color:#5b6475;font-size:13px}.mkc-box .warn{background:#fff4e5;border:1px solid #f0c27a;border-radius:8px;padding:8px 10px;font-size:13px;margin-top:10px}'
     + '.mkc-toast{position:fixed;left:50%;bottom:calc(64px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:2147483002;background:#1f2a44;color:#fff;padding:10px 16px;border-radius:10px;font:14px/1.5 system-ui,"Noto Sans TC",sans-serif;max-width:min(90vw,480px);box-shadow:0 6px 20px rgba(0,0,0,.3)}'
     + '@media print{.mkc-pill,.mkc-back,.mkc-toast{display:none!important}}';
@@ -448,7 +581,7 @@ function mountCloudUI(cloud, opts){
   function modal(html){ style(); var b = el('div', 'mkc-back'), box = el('div', 'mkc-box', html); b.appendChild(box); b.addEventListener('click', function(e){ if(e.target === b) b.remove(); }); doc.body.appendChild(b); return {back:b, box:box, q:function(s){ return box.querySelector(s); }}; }
   function openMenu(){
     var s = cloud.status();
-    var m = modal('<h3>☁ 雲端同步</h3><div>' + (s.error ? '<b style="color:#b3261e">' + esc(s.error) + '</b>' : '課程專案已和雲端同步。') + '</div>'
+    var m = modal('<h3>☁ 雲端同步</h3><div class="note">' + (s.role === 'member' ? '次帳號：' + esc(s.name || s.member) : '主帳號') + '</div><div>' + (s.error ? '<b style="color:#b3261e">' + esc(s.error) + '</b>' : '課程專案已和雲端同步。') + '</div>'
       + '<div class="note">' + (s.syncedAt ? '最後同步：' + new Date(s.syncedAt).toLocaleString() + '<br>' : '') + (s.remember ? '這台電腦會記住登入 30 天。' : '關閉瀏覽器 12 小時內有效。') + '</div>'
       + '<div class="row"><button data-a="out">登出雲端</button><button data-a="sync">立即同步</button><button class="pri" data-a="x">關閉</button></div>');
     m.q('[data-a=x]').onclick = function(){ m.back.remove(); };
@@ -463,32 +596,62 @@ function mountCloudUI(cloud, opts){
     var f = m.q('form'), msg = m.q('.msg');
     m.q('[data-a=x]').onclick = function(){ m.back.remove(); };
     m.q('#mkcSerial').focus();
+    var rem = '<label class="chk"><input type="checkbox" id="mkcRem"> 這台電腦記住 30 天（共用電腦請不要勾）</label>';
+    var btns = function(label){ return '<div class="msg"></div><div class="row"><button type="button" data-a="x">取消</button><button class="pri" type="submit">' + label + '</button></div>'; };
+    function bind(){ msg = f.querySelector('.msg'); f.querySelector('[data-a=x]').onclick = function(){ m.back.remove(); }; var i = f.querySelector('input:not([type=checkbox]):not([type=radio])'); if(i) i.focus(); }
+    function ok(){ m.back.remove(); afterLogin(); if(done) done(); }
+    var tabs = function(on){ return '<div class="mkc-who"><label><input type="radio" name="mkcWho" value="main"' + (on === 'main' ? ' checked' : '') + '> 主帳號（單位密語）</label><label><input type="radio" name="mkcWho" value="sub"' + (on === 'sub' ? ' checked' : '') + '> 次帳號（自己的密碼）</label></div>'; };
+    function mainStep(r){
+      f.innerHTML = (r.members ? tabs('main') : '') + (r.isNew
+        ? '<div class="warn">這是貴單位第一次使用，請設定<b>單位密語</b>（至少 8 個字）。這組密語是<b>主帳號</b>用的；同事可以由主帳號開「次帳號」，不必知道單位密語。<br><b>密語遺失就無法救回雲端資料</b>，平台也沒有辦法幫你重設。</div>'
+          + '<label for="mkcPass">設定單位密語</label><input id="mkcPass" type="password" autocomplete="new-password" minlength="8" required>'
+          + '<label for="mkcPass2">再輸入一次</label><input id="mkcPass2" type="password" autocomplete="new-password" minlength="8" required>'
+          + '<label class="chk"><input type="checkbox" id="mkcAck" required> 我了解密語遺失無法救回，已另外抄寫保存</label>'
+        : '<label for="mkcPass">單位密語</label><input id="mkcPass" type="password" autocomplete="current-password" required>')
+        + rem + (local ? '<label class="chk"><input type="checkbox" id="mkcUp" checked> 把這台電腦上原有的 ' + local + ' 個課程專案也上傳到雲端</label>' : '')
+        + btns(r.isNew ? '設定並登入' : '登入');
+      bind(); bindWho(r);
+      f.onsubmit = function(e){
+        e.preventDefault();
+        var p = f.querySelector('#mkcPass').value, p2 = f.querySelector('#mkcPass2');
+        if(p2 && p2.value !== p){ msg.textContent = '兩次輸入的密語不一樣'; return; }
+        msg.textContent = '解鎖中…';
+        var up = f.querySelector('#mkcUp');
+        cloud.unlock(p, {remember:f.querySelector('#mkcRem').checked, upload:up ? up.checked : true}).then(ok, function(err){ msg.textContent = err.message; });
+      };
+    }
+    function subStep(r){
+      f.innerHTML = tabs('sub') + '<div class="note" style="margin-top:8px">次帳號由主帳號建立，請向主帳號索取<b>帳號代號</b>。</div>'
+        + '<label for="mkcMember">帳號代號（6 碼）</label><input id="mkcMember" type="text" autocomplete="username" maxlength="6" style="text-transform:uppercase;letter-spacing:.2em" required>' + btns('下一步');
+      bind(); bindWho(r);
+      f.onsubmit = function(e){
+        e.preventDefault(); msg.textContent = '查詢中…';
+        var id = f.querySelector('#mkcMember').value;
+        cloud.memberInfo(id).then(function(x){
+          var invited = x.status === 'invited';
+          f.innerHTML = '<div class="note">次帳號 <b>' + esc(String(id).toUpperCase()) + '</b></div>' + (invited
+            ? '<div class="warn">第一次登入：輸入主帳號給你的<b>邀請碼</b>，並設定<b>自己的密碼</b>（至少 8 個字）。邀請碼用過就失效；之後用帳號代號＋自己的密碼登入。</div>'
+              + '<label for="mkcInv">邀請碼</label><input id="mkcInv" type="text" autocomplete="off" style="text-transform:uppercase;letter-spacing:.12em" required>'
+              + '<label for="mkcNew">設定自己的密碼</label><input id="mkcNew" type="password" autocomplete="new-password" minlength="8" required>'
+              + '<label for="mkcNew2">再輸入一次</label><input id="mkcNew2" type="password" autocomplete="new-password" minlength="8" required>'
+            : '<label for="mkcPass">密碼</label><input id="mkcPass" type="password" autocomplete="current-password" required>')
+            + rem + btns(invited ? '設定並登入' : '登入');
+          bind();
+          f.onsubmit = function(e){
+            e.preventDefault();
+            var go;
+            if(invited){ var a = f.querySelector('#mkcNew').value; if(a !== f.querySelector('#mkcNew2').value){ msg.textContent = '兩次輸入的密碼不一樣'; return; } go = cloud.unlockMember(f.querySelector('#mkcInv').value, {newPass:a, remember:f.querySelector('#mkcRem').checked, upload:false}); }
+            else go = cloud.unlockMember(f.querySelector('#mkcPass').value, {remember:f.querySelector('#mkcRem').checked, upload:false});
+            msg.textContent = '解鎖中…';
+            go.then(ok, function(err){ msg.textContent = err.message; });
+          };
+        }, function(err){ msg.textContent = err.message; });
+      };
+    }
+    function bindWho(r){ Array.prototype.forEach.call(f.querySelectorAll('[name=mkcWho]'), function(x){ x.onchange = function(){ x.value === 'sub' ? subStep(r) : mainStep(r); }; }); }
     f.onsubmit = function(e){
       e.preventDefault(); msg.textContent = '驗證中…';
-      cloud.check(m.q('#mkcSerial').value).then(function(r){
-        f.innerHTML = (r.isNew
-          ? '<div class="warn">這是貴單位第一次使用，請設定<b>單位密語</b>（至少 8 個字）。同單位的同事都用同一組密語。<br><b>密語遺失就無法救回雲端資料</b>，平台也沒有辦法幫你重設。</div>'
-            + '<label for="mkcPass">設定單位密語</label><input id="mkcPass" type="password" autocomplete="new-password" minlength="8" required>'
-            + '<label for="mkcPass2">再輸入一次</label><input id="mkcPass2" type="password" autocomplete="new-password" minlength="8" required>'
-            + '<label class="chk"><input type="checkbox" id="mkcAck" required> 我了解密語遺失無法救回，已另外抄寫保存</label>'
-          : '<label for="mkcPass">單位密語</label><input id="mkcPass" type="password" autocomplete="current-password" required>')
-          + '<label class="chk"><input type="checkbox" id="mkcRem"> 這台電腦記住 30 天（共用電腦請不要勾）</label>'
-          + (local ? '<label class="chk"><input type="checkbox" id="mkcUp" checked> 把這台電腦上原有的 ' + local + ' 個課程專案也上傳到雲端</label>' : '')
-          + '<div class="msg"></div><div class="row"><button type="button" data-a="x">取消</button><button class="pri" type="submit">' + (r.isNew ? '設定並登入' : '登入') + '</button></div>';
-        msg = f.querySelector('.msg');
-        f.querySelector('[data-a=x]').onclick = function(){ m.back.remove(); };
-        f.querySelector('#mkcPass').focus();
-        f.onsubmit = function(e){
-          e.preventDefault();
-          var p = f.querySelector('#mkcPass').value, p2 = f.querySelector('#mkcPass2');
-          if(p2 && p2.value !== p){ msg.textContent = '兩次輸入的密語不一樣'; return; }
-          msg.textContent = '解鎖中…';
-          var up = f.querySelector('#mkcUp');
-          cloud.unlock(p, {remember:f.querySelector('#mkcRem').checked, upload:up ? up.checked : true}).then(function(){
-            m.back.remove(); afterLogin(); if(done) done();
-          }, function(err){ msg.textContent = err.message; });
-        };
-      }, function(err){ msg.textContent = err.message; });
+      cloud.check(m.q('#mkcSerial').value).then(mainStep, function(err){ msg.textContent = err.message; });
     };
   }
   function afterLogin(){
@@ -511,7 +674,7 @@ function mountCloudUI(cloud, opts){
 var API = {VERSION:VERSION, SCHEMA:SCHEMA, KEY:KEY, norm:norm, normCourse:normCourse, normStudent:normStudent, studentKey:studentKey, merge:merge, create:create,
   toText:toText, fromText:fromText, fileName:fileName, toHash:toHash, fromHash:fromHash, label:label, when:when, newId:newId};
 try{ if(typeof localStorage !== 'undefined' && localStorage) API.store = create(localStorage, {max:root.MK_MAX_COURSES}); }catch(e){} // 隱私模式或封鎖網站資料時沒有 store，工具要照常運作
-API.mergeDocs = mergeDocs; API.createCloud = createCloud; API.memKeystore = memKeystore; API.crypto = {deriveKey:deriveKey, encryptJSON:encryptJSON, decryptJSON:decryptJSON};
+API.mergeDocs = mergeDocs; API.createCloud = createCloud; API.memKeystore = memKeystore; API.crypto = {deriveKey:deriveKey, encryptJSON:encryptJSON, decryptJSON:decryptJSON, pbkdf2Bits:pbkdf2Bits, aesKey:aesKey, authProof:authProof};
 // 瀏覽器：建立雲端同步並掛上小徽章。正式 API 是 DEFAULT_API；只有在本機（localhost）才可用 localStorage 'mk.cloud.api' 覆寫，方便測試
 try{
   if(API.store && root.document && typeof fetch === 'function' && typeof indexedDB !== 'undefined'){
